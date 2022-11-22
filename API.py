@@ -1,5 +1,8 @@
 import requests
 import os
+import re
+import uuid
+import shutil
 
 def fortnite_br_stats(username):
 	url = "https://fortnite-api.com/v2/stats/br/v2"
@@ -33,3 +36,6 @@ def fish_stats(username):
 		print("Failed to fetch user fish data")
 		return 404
 	return r.json()
+
+def daily_shop():
+	return urls

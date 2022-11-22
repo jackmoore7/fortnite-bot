@@ -9,8 +9,9 @@ import feedparser
 from discord.ext import tasks
 from discord.ui import Button, View
 import sqlite3 as sl
-
+import datetime
 from dotenv import load_dotenv
+
 load_dotenv()
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.getenv('GOOGLE_KEY')
@@ -34,6 +35,7 @@ async def on_ready():
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
+	fortnite_shop_update.start()
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
@@ -74,6 +76,28 @@ async def fortnite_status_bg():
 		embed.set_footer(text="Use /update to subscribe to notifications")
 		embed.add_field(name="Status", value=response)
 		await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
+
+@tasks.loop(time=datetime.time(hour=0, minute=1))
+async def fortnite_shop_update():
+	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+	async with channel.typing():
+		url = "https://fortniteapi.io/v2/shop?lang=en"
+		key = os.getenv('FNAPI_IO_KEY')
+		r = requests.get(url, headers={"Authorization": key})
+		r = r.json()
+		for item in r['shop']:
+			image = item['displayAssets'][0]['full_background']
+			e = requests.get(image, stream = True)
+			newuuid = str(uuid.uuid4())
+			with open(newuuid + ".png", "wb") as f:
+				shutil.copyfileobj(e.raw, f)
+				if 'peely' in item['displayName']:
+					await channel.send("<@" + os.getenv('ANDY') + ">", file=discord.File(newuuid + ".png"))
+				else:
+					await channel.send(file=discord.File(newuuid + ".png"))
+				if os.path.exists(newuuid + ".png"):
+					os.remove(newuuid + ".png")
+		print("finished shop post")
 
 @discordClient.slash_command(description="Subscribe/unsubscribe to Fortnite status updates")
 async def update(ctx):
@@ -333,8 +357,8 @@ async def on_message(message):
 					if logos:
 						await message.add_reaction("👀")
 	
-	#message.content = re.sub('[^0-9a-zA-Z]+', '', message.content)
-	#message.content = (message.content.encode('ascii', 'ignore')).decode("utf-8")
+	message.content = re.sub('[^0-9a-zA-Z]+', '', message.content)
+	message.content = (message.content.encode('ascii', 'ignore')).decode("utf-8")
 	ree = re.findall(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', message.content)
 	if ree:
 		await message.delete()
