@@ -1,0 +1,1 @@
+A bot I made for my friends and I. Feel free to message me if you have questions :)

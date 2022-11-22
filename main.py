@@ -56,9 +56,7 @@ async def tv_show_update_bg():
 	feed = feedparser.parse(url)
 	last_guid = cursor.execute("select * from rss").fetchall()[0][0]
 	latest_guid = feed['entries'][0]['guid']
-	if latest_guid == last_guid:
-		pass
-	else:
+	if latest_guid != last_guid:
 		rssembed = discord.Embed(title = "A new episode just released!")
 		rssembed.add_field(name="Name", value=feed['entries'][0]['tv_raw_title'], inline=False)
 		rssembed.add_field(name="Released", value=feed['entries'][0]['published'], inline=False)
@@ -251,7 +249,7 @@ async def sql(ctx, query):
 		await ctx.respond("nice try bozo")
 	else:
 		try:
-			q = cursor.execute(query)
+			cursor.execute(query)
 			await ctx.respond("Executed ✅")
 		except:
 			await ctx.respond("Not a valid query.")
