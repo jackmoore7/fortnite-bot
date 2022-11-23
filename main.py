@@ -78,22 +78,18 @@ async def fortnite_status_bg():
 @tasks.loop(time=datetime.time(hour=0, minute=1))
 async def fortnite_shop_update():
 	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-	async with channel.typing():
-		url = "https://fortniteapi.io/v2/shop?lang=en"
-		key = os.getenv('FNAPI_IO_KEY')
-		r = requests.get(url, headers={"Authorization": key})
-		r = r.json()
-		for item in r['shop']:
-			if item['previousReleaseDate'] is None:
-				image = item['displayAssets'][0]['full_background']
-				e = requests.get(image, stream = True)
-				newuuid = str(uuid.uuid4())
-				with open(newuuid + ".png", "wb") as f:
-					shutil.copyfileobj(e.raw, f)
-					await channel.send(file=discord.File(newuuid + ".png"))
-					if os.path.exists(newuuid + ".png"):
-		 				os.remove(newuuid + ".png")
-						
+	r = fortnite_shop()
+	for item in r['shop']:
+		if item['previousReleaseDate'] is None:
+			image = item['displayAssets'][0]['full_background']
+			e = requests.get(image, stream = True)
+			newuuid = str(uuid.uuid4())
+			with open(newuuid + ".png", "wb") as f:
+				shutil.copyfileobj(e.raw, f)
+				await channel.send(file=discord.File(newuuid + ".png"))
+				if os.path.exists(newuuid + ".png"):
+	 				os.remove(newuuid + ".png")
+
 @discordClient.slash_command(description="Subscribe/unsubscribe to Fortnite status updates")
 async def update(ctx):
 	roles = ctx.user.roles
