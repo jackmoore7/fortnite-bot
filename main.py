@@ -80,7 +80,8 @@ async def fortnite_shop_update():
 	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
 	r = fortnite_shop()
 	for item in r['shop']:
-		if item['previousReleaseDate'] is None:
+		#if item['previousReleaseDate'] is None:
+		if item['previousReleaseDate'] != (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%Y-%m-%d'): #if previous release date isn't yesterday
 			image = item['displayAssets'][0]['full_background']
 			e = requests.get(image, stream = True)
 			newuuid = str(uuid.uuid4())
@@ -489,5 +490,13 @@ async def on_reaction_add(reaction, user):
 			# 	await reaction.message.channel.send("Guess: " + resp[1] + "\nConfidence: " + str(resp[2]))
 			await reaction.message.reply(response, mention_author=False)
 
+@discordClient.event
+async def on_member_update(before, after):
+	if before == discordClient.user:
+		return
+	if after.nick:
+		ree = re.findall(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', after.nick)
+	if ree:
+		await after.edit(nick='loser')
 
 discordClient.run(os.getenv('TOKEN'))
