@@ -75,7 +75,7 @@ async def fortnite_status_bg():
 		embed.add_field(name="Status", value=response)
 		await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 
-@tasks.loop(time=datetime.time(hour=0, minute=1))
+@tasks.loop(time=datetime.time(hour=0, minute=2))
 async def fortnite_shop_update():
 	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
 	r = fortnite_shop()
@@ -87,6 +87,7 @@ async def fortnite_shop_update():
 			newuuid = str(uuid.uuid4())
 			with open(newuuid + ".png", "wb") as f:
 				shutil.copyfileobj(e.raw, f)
+				await asyncio.sleep(2)
 				await channel.send(file=discord.File(newuuid + ".png"))
 				if os.path.exists(newuuid + ".png"):
 	 				os.remove(newuuid + ".png")
@@ -405,6 +406,12 @@ async def on_message(message):
 					for label in labels:
 						cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, label.description, label.score])
 						label.description = label.description.lower()
+						if 'squirrel' in label.description:
+							await message.channel.send("it's andrew")
+							return
+						if 'dog' in label.description:
+							await message.channel.send("rat?")
+							return
 						if 'store' in label.description:
 							print("probably aldi")
 							await message.delete()
