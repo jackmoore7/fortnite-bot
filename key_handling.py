@@ -11,12 +11,13 @@ def get_account_key_fortnitePCGameClient():
     r = requests.post(url, headers={"Content-Type":"application/x-www-form-urlencoded"}, data={"grant_type":"client_credentials"}, auth=(username, password))
     r = r.json()
     if r['access_token']:
-        print(r['access_token'])
+        print("Fortnite client token generated successfully.")
         con = sl.connect('fortnite.db', isolation_level=None)
         cursor = con.cursor()
         cursor.execute("UPDATE keys SET fortnite = ?", (r['access_token'],))
         return r['access_token']
     else:
+        print("Failed to generate a new Fortnite client token.")
         return None
 
 
@@ -27,12 +28,13 @@ def get_account_key_launcherAppClient2():
     r = requests.post(url, headers={"Content-Type":"application/x-www-form-urlencoded"}, data={"grant_type":"client_credentials"}, auth=(username, password))
     r = r.json()
     if r['access_token']:
-        print(r['access_token'])
+        print("Launcher client token generated successfully.")
         con = sl.connect('fortnite.db', isolation_level=None)
         cursor = con.cursor()
         cursor.execute("UPDATE keys SET launcher = ?", (r['access_token'],))
         return r['access_token']
     else:
+        print("Failed to generate a new launcher client token.")
         return None
 
 def get_fortnite_status(): #need to use the fortnite client token
@@ -43,7 +45,7 @@ def get_fortnite_status(): #need to use the fortnite client token
     r = requests.get(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401: #key expired, generate a new one. expires every 4 hours.
         x = dt.now().isoformat()
-        print("New key needed at " + str(x))
+        print("New Fortnite client key needed at " + str(x))
         get_account_key_fortnitePCGameClient()
         time.sleep(2)
         return get_fortnite_status()
@@ -58,7 +60,7 @@ def get_fortnite_update_manifest(): #need to use the launcher client token
     r = requests.get(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401: #key expired, generate a new one. expires every 4 hours.
         x = dt.now().isoformat()
-        print("New key needed at " + str(x))
+        print("New launcher key needed at " + str(x))
         get_account_key_launcherAppClient2()
         time.sleep(2)
         return get_fortnite_update_manifest()

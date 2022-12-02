@@ -3,6 +3,7 @@ import requests
 import shutil
 import discord
 import re
+import random
 import uuid
 import asyncio
 import feedparser
@@ -31,7 +32,7 @@ cursor = con.cursor()
 @discordClient.event
 async def on_ready():
 	print(f'{discordClient.user} is now online!')
-	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="your ass"))
+	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="for <store>"))
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
@@ -91,6 +92,15 @@ async def fortnite_shop_update():
 				await channel.send(file=discord.File(newuuid + ".png"))
 				if os.path.exists(newuuid + ".png"):
 	 				os.remove(newuuid + ".png")
+
+@discordClient.slash_command()
+async def dc(ctx):
+	voice_state = ctx.guild.voice_client
+	if voice_state:
+		await voice_state.disconnect()
+		await ctx.respond(":thumbsup:", ephemeral=True)
+	else:
+		await ctx.respond("Not connected to a voice channel", ephemeral=True)
 
 @discordClient.slash_command(description="Subscribe/unsubscribe to Fortnite status updates")
 async def update(ctx):
@@ -430,6 +440,7 @@ async def on_message(message):
 
 @discordClient.event
 async def on_voice_state_update(member, before, after):
+	audios = ["assets/echo.mp3", "assets/gnomed.mp3", "assets/oof.mp3", "assets/rick.mp3"]
 	await asyncio.sleep(0.5)
 	if member == discordClient.user:
 		return
@@ -438,10 +449,12 @@ async def on_voice_state_update(member, before, after):
 		return
 	if before.channel == None:
 		print(str(member) + " joined " + str(after.channel.id))
+		if member.id != int(os.getenv('ANDY')) and member.id != int(os.getenv('MORDY')):
+			await after.channel.send("<@" + os.getenv('MORDY') + ">, " + str(member) + " just joined.")
 		if not voice_state:
 			await after.channel.connect()
 			voice_state = member.guild.voice_client
-			voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source="assets/echo.mp3"))
+			voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source=random.choice(audios)))
 			await asyncio.sleep(2)
 			await voice_state.disconnect()
 	if (before.channel and after.channel) and (before.channel.id != after.channel.id) and not voice_state:
@@ -449,14 +462,14 @@ async def on_voice_state_update(member, before, after):
 		await after.channel.connect()
 		voice_state = member.guild.voice_client
 		#await voice_state.move_to(after.channel)
-		voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source="assets/echo.mp3"))
+		voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source=random.choice(audios)))
 		await asyncio.sleep(2)
 		await voice_state.disconnect()
 	if (after.channel == None) and (len(before.channel.members) > 0) and not voice_state:
 		print(str(member) + " left " + str(before.channel.id))
 		await before.channel.connect()
 		voice_state = member.guild.voice_client
-		voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source="assets/echo.mp3"))
+		voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source=random.choice(audios)))
 		await asyncio.sleep(2)
 		await voice_state.disconnect()
 
@@ -495,7 +508,7 @@ async def on_reaction_add(reaction, user):
 			response = cursor.execute("SELECT guess, score FROM ai WHERE id = ?", (id,),).fetchall()
 			# for resp in response:
 			# 	await reaction.message.channel.send("Guess: " + resp[1] + "\nConfidence: " + str(resp[2]))
-			await reaction.message.reply(response, mention_author=False)
+			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
 
 @discordClient.event
 async def on_member_update(before, after):
