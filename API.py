@@ -39,3 +39,9 @@ def fish_stats(username):
 		print("Failed to fetch user fish data")
 		return 404
 	return r.json()
+
+def fortnite_augments():
+	url = "https://fortniteapi.io/v1/game/augments"
+	key = os.getenv('FNAPI_IO_KEY')
+	r = requests.get(url, headers={"Authorization": key})
+	return r.json()

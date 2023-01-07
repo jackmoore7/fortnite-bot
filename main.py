@@ -7,11 +7,14 @@ import random
 import uuid
 import asyncio
 import feedparser
+from io import BytesIO
 from discord.ext import tasks
 from discord.ui import Button, View
 import sqlite3 as sl
 import datetime
+from datetime import timezone
 from dotenv import load_dotenv
+import glob
 
 load_dotenv()
 
@@ -36,62 +39,165 @@ async def on_ready():
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
-	fortnite_shop_update.start()
+	# fortnite_shop_update.start()
+	fortnite_shop_update_v2.start()
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
-	channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
-	response = get_fortnite_update_manifest()
-	current_version = cursor.execute("SELECT * FROM aes").fetchall()[0][0]
-	if current_version != response:
-		cursor.execute("UPDATE aes SET version = ?", (response,))
-		embed = discord.Embed(title="A new Fortnite update was just deployed")
-		embed.set_footer(text="Use /update to subscribe to notifications")
-		embed.add_field(name="Build", value=response, inline=False)
-		await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
+	try:
+		channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
+		channel2 = discordClient.get_channel(int(os.getenv('CRINGE_ZONE')))
+		response = get_fortnite_update_manifest()
+		if 'error' in response:
+			await channel2.send("The following error occured while trying to get the Fortnite update manifest: " + str(response))
+			return
+		current_version = cursor.execute("SELECT * FROM aes").fetchall()[0][0]
+		if current_version != response:
+			cursor.execute("UPDATE aes SET version = ?", (response,))
+			embed = discord.Embed(title="A new Fortnite update was just deployed")
+			embed.set_footer(text="Use /update to subscribe to notifications")
+			embed.add_field(name="Build", value=response, inline=False)
+			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
+	except Exception as e:
+		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		await asyncio.sleep(60)
+		fortnite_update_bg.restart()
 
 @tasks.loop(minutes=30)
 async def tv_show_update_bg():
-	user = discordClient.get_user(int(os.getenv('ME')))
-	url = os.getenv('SHOWRSS')
-	feed = feedparser.parse(url)
-	last_guid = cursor.execute("select * from rss").fetchall()[0][0]
-	latest_guid = feed['entries'][0]['guid']
-	if latest_guid != last_guid:
-		rssembed = discord.Embed(title = "A new episode just released!")
-		rssembed.add_field(name="Name", value=feed['entries'][0]['tv_raw_title'], inline=False)
-		rssembed.add_field(name="Released", value=feed['entries'][0]['published'], inline=False)
-		cursor.execute("UPDATE rss SET guid = ?", (latest_guid,))
-		await user.send(embed = rssembed)
+	try:
+		user = discordClient.get_user(int(os.getenv('ME')))
+		url = os.getenv('SHOWRSS')
+		feed = feedparser.parse(url)
+		last_guid = cursor.execute("select * from rss").fetchall()[0][0]
+		latest_guid = feed['entries'][0]['guid']
+		if latest_guid != last_guid:
+			rssembed = discord.Embed(title = "A new episode just released!")
+			rssembed.add_field(name="Name", value=feed['entries'][0]['tv_raw_title'], inline=False)
+			rssembed.add_field(name="Released", value=feed['entries'][0]['published'], inline=False)
+			cursor.execute("UPDATE rss SET guid = ?", (latest_guid,))
+			await user.send(embed = rssembed)
+	except Exception as e:
+		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		await asyncio.sleep(60)
+		tv_show_update_bg.restart()
 
 @tasks.loop(minutes=1)
 async def fortnite_status_bg():
-	channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
-	response = get_fortnite_status()
-	current_status = cursor.execute("SELECT * FROM server").fetchall()[0][0]
-	if current_status != response:
-		cursor.execute("UPDATE server SET status = ?", (response,))
-		embed = discord.Embed(title = "Fortnite server status update")
-		embed.set_footer(text="Use /update to subscribe to notifications")
-		embed.add_field(name="Status", value=response)
-		await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
+	try:
+		channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
+		response = get_fortnite_status()
+		current_status = cursor.execute("SELECT * FROM server").fetchall()[0][0]
+		if current_status != response:
+			cursor.execute("UPDATE server SET status = ?", (response,))
+			embed = discord.Embed(title = "Fortnite server status update")
+			embed.set_footer(text="Use /update to subscribe to notifications")
+			embed.add_field(name="Status", value=response)
+			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
+	except Exception as e:
+		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		await asyncio.sleep(60)
+		fortnite_status_bg.restart()
 
-@tasks.loop(time=datetime.time(hour=0, minute=2))
+#@tasks.loop(time=datetime.time(hour=5, minute=30))
+@tasks.loop(minutes=10)
 async def fortnite_shop_update():
-	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-	r = fortnite_shop()
-	for item in r['shop']:
-		#if item['previousReleaseDate'] is None:
-		if item['previousReleaseDate'] != (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%Y-%m-%d'): #if previous release date isn't yesterday
-			image = item['displayAssets'][0]['full_background']
-			e = requests.get(image, stream = True)
-			newuuid = str(uuid.uuid4())
-			with open(newuuid + ".png", "wb") as f:
-				shutil.copyfileobj(e.raw, f)
-				await asyncio.sleep(2)
-				await channel.send(file=discord.File(newuuid + ".png"))
-				if os.path.exists(newuuid + ".png"):
-	 				os.remove(newuuid + ".png")
+	try:
+		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+		r = fortnite_shop()
+		uid = cursor.execute("SELECT uid FROM shop").fetchall()[0][0]
+		new_uid = r['lastUpdate']['uid']
+		if new_uid != uid:
+			for item in r['shop']:
+				#if item['previousReleaseDate'] is None:
+				if item['previousReleaseDate'] != (datetime.datetime.now(timezone.utc) - datetime.timedelta(days=1)).strftime('%Y-%m-%d'): #if previous release date isn't yesterday
+					item_list = cursor.execute("SELECT item FROM shop_ping").fetchall()
+					for cosmetic in item_list:
+						cosmetic = cosmetic[0]
+						if cosmetic.lower() in item['displayName'].lower():
+							users = cursor.execute("SELECT id FROM shop_ping WHERE item = ?", (cosmetic,)).fetchall()
+							for user in users:
+								user = user[0]
+								await channel.send("<@" + str(user) + ">, " + item['displayName'] + " is in the shop\nTriggered by your keyword: " + cosmetic)
+					image = item['displayAssets'][0]['full_background']
+					e = requests.get(image, stream = True)
+					image_size = e.headers['Content-Length']
+					newuuid = str(uuid.uuid4())
+					with open(newuuid + ".png", "wb") as f:
+						for chunk in e.iter_content(int(image_size)):
+							f.write(chunk)
+						await channel.send(file=discord.File(newuuid + ".png"))
+						if os.path.exists(newuuid + ".png"):
+							os.remove(newuuid + ".png")
+			await channel.send("---")
+			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
+	except Exception as e:
+		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		await asyncio.sleep(60)
+		fortnite_shop_update.restart()
+
+@tasks.loop(minutes=10)
+async def fortnite_shop_update_v2():
+	try:
+		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+		r = fortnite_shop()
+		uid = cursor.execute("SELECT uid FROM shop").fetchall()[0][0]
+		new_uid = r['lastUpdate']['uid']
+		if new_uid != uid:
+			today = []
+			for item in r['shop']:
+				image = item['displayAssets'][0]['full_background']
+				name = item['displayName']
+				toople = (image, name)
+				today.append(toople)
+			yesterday = cursor.execute("SELECT * FROM shop_content").fetchall()
+			diff = []
+			for item in today:
+				if item not in yesterday:
+					diff.append(item)
+			if len(diff) < 1:
+				await channel.send("The shop was just updated, but there are no new items. Length changed by " + str(len(diff)))
+				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
+				return
+			for item in diff:
+				e = requests.get(item[0], stream = True)
+				await asyncio.sleep(0.5)
+				image_size = e.headers['Content-Length']
+				newuuid = str(uuid.uuid4())
+				with open("temp_images/" + newuuid + ".png", "wb") as f:
+					for chunk in e.iter_content(int(image_size)):
+						f.write(chunk)
+			await channel.send(f"A new shop rotation was just released. There are {len(diff)} new items.")
+			for item in diff:
+					item_list = cursor.execute("SELECT item FROM shop_ping").fetchall()
+					for cosmetic in item_list:
+						cosmetic = cosmetic[0]
+						if cosmetic.lower() in item[1].lower():
+							users = cursor.execute("SELECT id FROM shop_ping WHERE item = ?", (cosmetic,)).fetchall()
+							for user in users:
+								user = user[0]
+								await channel.send("<@" + str(user) + ">, " + item[1] + " is in the shop\nTriggered by your keyword: " + cosmetic)
+			files = glob.glob('temp_images/*.png')
+			for f in files:
+				await channel.send(file=discord.File(f))
+				os.remove(f)
+			await channel.send("---")
+
+
+			cursor.execute("DELETE FROM shop_content")
+			for item in diff:
+				cursor.execute("INSERT INTO shop_content VALUES (?, ?)", (item[0], item[1]))
+			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
+	except Exception as e:
+		print("Something went wrong ((V2)): " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		files = glob.glob('temp_images/*.png')
+		for f in files:
+			os.remove(f)
+		await asyncio.sleep(60)
+		fortnite_shop_update_v2.restart()
+			
+				
+
 
 @discordClient.slash_command()
 async def dc(ctx):
@@ -101,6 +207,64 @@ async def dc(ctx):
 		await ctx.respond(":thumbsup:", ephemeral=True)
 	else:
 		await ctx.respond("Not connected to a voice channel", ephemeral=True)
+
+@discordClient.slash_command(description="[Owner] Clear messages")
+async def purge(ctx, amount):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+		return
+	await ctx.defer()
+	await ctx.channel.purge(limit=int(amount)+1, bulk=True)
+
+@discordClient.slash_command(description="Get pinged when someone joins a voice channel")
+async def pingme(ctx):
+	id = ctx.user.id
+	users = cursor.execute("SELECT * FROM pingme").fetchall()
+	for user in users:
+		if id == user[0]:
+			cursor.execute("DELETE FROM pingme WHERE user = ?", (id,))
+			await ctx.respond("Removed ✅")
+			return
+	cursor.execute("INSERT INTO pingme VALUES (?)", (id,))
+	await ctx.respond("Added ✅")
+	
+
+notifyme = discordClient.create_group("notifyme", "Get notified when an item you want is in the shop")
+
+@notifyme.command(description="Add or remove a cosmetic")
+async def edit(ctx, item):
+	if len(item) > 25:
+		await ctx.respond("String must be less than 26 characters")
+		return
+	if 'aldi' in item:
+		await ctx.respond("No")
+		return
+	text_check = re.findall(r'(?i)[^a-z0-9\s\-\']', item)
+	if text_check:
+		await ctx.respond("Not a valid string. [a-z0-9\s\-'] only.")
+		return
+	id = ctx.user.id
+	if len(cursor.execute("SELECT * FROM shop_ping WHERE item = ? AND id = ?", (item, id)).fetchall()) > 0:
+		try:
+			cursor.execute("DELETE FROM shop_ping WHERE item = ? AND id = ?", (item, id))
+			await ctx.respond("Removed ✅")
+			return
+		except:
+			await ctx.respond("Something went wrong")
+	try:
+		cursor.execute("INSERT INTO shop_ping VALUES (?, ?)", (id, item))
+		await ctx.respond("Added ✅")
+	except:
+		await ctx.respond("Something went wrong")
+
+@notifyme.command(description="View the list of cosmetics you want notifications for")
+async def list(ctx):
+	id = ctx.user.id
+	list = []
+	items = cursor.execute("SELECT item FROM shop_ping WHERE id = ?", (id,)).fetchall()
+	for item in items:
+		list.append(item[0])
+	await ctx.respond(list)
 
 @discordClient.slash_command(description="Subscribe/unsubscribe to Fortnite status updates")
 async def update(ctx):
@@ -167,6 +331,8 @@ async def fortnite(ctx, username):
 
 @discordClient.slash_command(description="See the biggest fish a user caught this season")
 async def fortnite_fish(ctx, username):
+	await ctx.respond("Fish collection is not present in this season.")
+	return
 	await ctx.defer()
 	new_record = False
 	r = fish_stats(username)
@@ -244,8 +410,8 @@ async def sql_fetchall(ctx, query):
 		try:
 			q = cursor.execute(query).fetchall()
 			await ctx.respond(q)
-		except:
-			await ctx.respond("Not a valid query.")
+		except Exception as e:
+			await ctx.respond("Not a valid query. Reason: " + str(repr(e)))
 
 @discordClient.slash_command(description="[Owner] Query the database with an SQL command")
 async def sql(ctx, query):
@@ -420,7 +586,7 @@ async def on_message(message):
 							await message.channel.send("it's andrew")
 							return
 						if 'dog' in label.description:
-							await message.channel.send("rat?")
+							await message.channel.send("rat")
 							return
 						if 'store' in label.description:
 							print("probably aldi")
@@ -440,7 +606,7 @@ async def on_message(message):
 
 @discordClient.event
 async def on_voice_state_update(member, before, after):
-	audios = ["assets/echo.mp3", "assets/gnomed.mp3", "assets/oof.mp3", "assets/rick.mp3"]
+	audios = ["assets/echo.mp3"]
 	await asyncio.sleep(0.5)
 	if member == discordClient.user:
 		return
@@ -449,8 +615,12 @@ async def on_voice_state_update(member, before, after):
 		return
 	if before.channel == None:
 		print(str(member) + " joined " + str(after.channel.id))
-		if member.id != int(os.getenv('ANDY')) and member.id != int(os.getenv('MORDY')):
-			await after.channel.send("<@" + os.getenv('MORDY') + ">, " + str(member) + " just joined.")
+		users = cursor.execute("SELECT * from pingme").fetchall()
+		for user in users:
+			if member.id == user[0]:
+				return
+			else:
+				await after.channel.send("<@" + str(user[0]) + ">, " + str(member) + " just joined.")
 		if not voice_state:
 			await after.channel.connect()
 			voice_state = member.guild.voice_client
@@ -500,6 +670,8 @@ async def on_raw_message_edit(payload):
 async def on_reaction_add(reaction, user):
 	if user == discordClient.user:
 		return
+	if reaction.emoji == "🇱" or reaction.emoji == "🇦" or reaction.emoji == "🇩" or reaction.emoji == "🇮" or reaction.emoji == "🅰️":
+		await reaction.clear()
 	id = reaction.message.id
 	users = await reaction.users().flatten()
 	for lad in users:
