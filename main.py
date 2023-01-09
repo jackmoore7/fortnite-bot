@@ -182,10 +182,8 @@ async def fortnite_shop_update_v2():
 				await channel.send(file=discord.File(f))
 				os.remove(f)
 			await channel.send("---")
-
-
 			cursor.execute("DELETE FROM shop_content")
-			for item in diff:
+			for item in today:
 				cursor.execute("INSERT INTO shop_content VALUES (?, ?)", (item[0], item[1]))
 			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 	except Exception as e:
@@ -195,9 +193,6 @@ async def fortnite_shop_update_v2():
 			os.remove(f)
 		await asyncio.sleep(60)
 		fortnite_shop_update_v2.restart()
-			
-				
-
 
 @discordClient.slash_command()
 async def dc(ctx):
@@ -422,8 +417,8 @@ async def sql(ctx, query):
 		try:
 			cursor.execute(query)
 			await ctx.respond("Executed ✅")
-		except:
-			await ctx.respond("Not a valid query.")
+		except Exception as e:
+			await ctx.respond("Not a valid query. Reason: " + str(repr(e)))
 
 @discordClient.slash_command(description="Check the bot's ping")
 async def ping(ctx):
