@@ -7,7 +7,6 @@ import random
 import uuid
 import asyncio
 import feedparser
-from io import BytesIO
 from discord.ext import tasks
 from discord.ui import Button, View
 import sqlite3 as sl
@@ -39,19 +38,14 @@ async def on_ready():
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
-	# fortnite_shop_update.start()
 	fortnite_shop_update_v2.start()
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
-		channel2 = discordClient.get_channel(int(os.getenv('CRINGE_ZONE')))
 		response = get_fortnite_update_manifest()
-		if 'error' in response:
-			await channel2.send("The following error occured while trying to get the Fortnite update manifest: " + str(response))
-			return
-		current_version = cursor.execute("SELECT * FROM aes").fetchall()[0][0]
+		current_version = cursor.execute("SELECT version FROM aes").fetchone()[0]
 		if current_version != response:
 			cursor.execute("UPDATE aes SET version = ?", (response,))
 			embed = discord.Embed(title="A new Fortnite update was just deployed")
@@ -99,44 +93,7 @@ async def fortnite_status_bg():
 		await asyncio.sleep(60)
 		fortnite_status_bg.restart()
 
-#@tasks.loop(time=datetime.time(hour=5, minute=30))
-@tasks.loop(minutes=10)
-async def fortnite_shop_update():
-	try:
-		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-		r = fortnite_shop()
-		uid = cursor.execute("SELECT uid FROM shop").fetchall()[0][0]
-		new_uid = r['lastUpdate']['uid']
-		if new_uid != uid:
-			for item in r['shop']:
-				#if item['previousReleaseDate'] is None:
-				if item['previousReleaseDate'] != (datetime.datetime.now(timezone.utc) - datetime.timedelta(days=1)).strftime('%Y-%m-%d'): #if previous release date isn't yesterday
-					item_list = cursor.execute("SELECT item FROM shop_ping").fetchall()
-					for cosmetic in item_list:
-						cosmetic = cosmetic[0]
-						if cosmetic.lower() in item['displayName'].lower():
-							users = cursor.execute("SELECT id FROM shop_ping WHERE item = ?", (cosmetic,)).fetchall()
-							for user in users:
-								user = user[0]
-								await channel.send("<@" + str(user) + ">, " + item['displayName'] + " is in the shop\nTriggered by your keyword: " + cosmetic)
-					image = item['displayAssets'][0]['full_background']
-					e = requests.get(image, stream = True)
-					image_size = e.headers['Content-Length']
-					newuuid = str(uuid.uuid4())
-					with open(newuuid + ".png", "wb") as f:
-						for chunk in e.iter_content(int(image_size)):
-							f.write(chunk)
-						await channel.send(file=discord.File(newuuid + ".png"))
-						if os.path.exists(newuuid + ".png"):
-							os.remove(newuuid + ".png")
-			await channel.send("---")
-			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
-	except Exception as e:
-		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
-		await asyncio.sleep(60)
-		fortnite_shop_update.restart()
-
-@tasks.loop(minutes=10)
+@tasks.loop(minutes=5)
 async def fortnite_shop_update_v2():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
@@ -160,8 +117,8 @@ async def fortnite_shop_update_v2():
 				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 				return
 			for item in diff:
-				e = requests.get(item[0], stream = True)
-				await asyncio.sleep(0.5)
+				e = requests.get(item[0], stream=True)
+				e.raise_for_status()
 				image_size = e.headers['Content-Length']
 				newuuid = str(uuid.uuid4())
 				with open("temp_images/" + newuuid + ".png", "wb") as f:
@@ -283,45 +240,33 @@ async def fortnite(ctx, username):
 	if r.json()['status'] != 200:
 		await ctx.respond("`" + username + "`" " doesn't exist or hasn't played any games yet")
 		return
-	name = r.json()['data']['account']['name']
-	level = r.json()['data']['battlePass']['level']
-	wins = r.json()['data']['stats']['all']['overall']['wins']
-	top3 = r.json()['data']['stats']['all']['overall']['top3']
-	top5 = r.json()['data']['stats']['all']['overall']['top5']
-	top6 = r.json()['data']['stats']['all']['overall']['top6']
-	top10 = r.json()['data']['stats']['all']['overall']['top10']
-	top12 = r.json()['data']['stats']['all']['overall']['top12']
-	top25 = r.json()['data']['stats']['all']['overall']['top25']
-	kills = r.json()['data']['stats']['all']['overall']['kills']
-	killspermin = r.json()['data']['stats']['all']['overall']['killsPerMin']
-	killspermatch = r.json()['data']['stats']['all']['overall']['killsPerMatch']
-	deaths = r.json()['data']['stats']['all']['overall']['deaths']
-	kd = r.json()['data']['stats']['all']['overall']['kd']
-	matches = r.json()['data']['stats']['all']['overall']['matches']
-	winrate = r.json()['data']['stats']['all']['overall']['winRate']
-	minutesplayed = r.json()['data']['stats']['all']['overall']['minutesPlayed']
-	playersoutlived = r.json()['data']['stats']['all']['overall']['playersOutlived']
-	lastmodified = r.json()['data']['stats']['all']['overall']['lastModified']
-
+	data = r.json()['data']
+	name = data['account']['name']
+	level = data['battlePass']['level']
 	embed = discord.Embed(title = "All time statistics for " + name)
+	stats = data['stats']['all']['overall']
+	fields = [
+		("Wins", "wins"),
+		("Top 3", "top3"),
+		("Top 5", "top5"),
+		("Top 6", "top6"),
+		("Top 10", "top10"),
+		("Top 12", "top12"),
+		("Top 25", "top25"),
+		("Kills", "kills"),
+		("Kills per minute", "killsPerMin"),
+		("Kills per match", "killsPerMatch"),
+		("Deaths", "deaths"),
+		("K/D", "kd"),
+		("Matches", "matches"),
+		("Winrate", "winRate"),
+		("Minutes played", "minutesPlayed"),
+		("Players outlived", "playersOutlived"),
+		("Last modified", "lastModified"),
+	]
 	embed.add_field(name="Level (current season)", value=level, inline=False)
-	embed.add_field(name="Wins", value=wins, inline=False)
-	embed.add_field(name="Top 3", value=top3, inline=False)
-	embed.add_field(name="Top 5", value=top5, inline=False)
-	embed.add_field(name="Top 6", value=top6, inline=False)
-	embed.add_field(name="Top 10", value=top10, inline=False)
-	embed.add_field(name="Top 12", value=top12, inline=False)
-	embed.add_field(name="Top 25", value=top25, inline=False)
-	embed.add_field(name="Kills", value=kills, inline=False)
-	embed.add_field(name="Kills per minute", value=killspermin, inline=False)
-	embed.add_field(name="Kills per match", value=killspermatch, inline=False)
-	embed.add_field(name="Deaths", value=deaths, inline=False)
-	embed.add_field(name="K/D", value=kd, inline=False)
-	embed.add_field(name="Matches", value=matches, inline=False)
-	embed.add_field(name="Win rate", value=str(winrate)+"%", inline=False)
-	embed.add_field(name="Minutes played", value=str(minutesplayed) + " (" + str(round(minutesplayed/1440, 2)) + " days)", inline=False)
-	embed.add_field(name="Players outlived", value=playersoutlived, inline=False)
-	embed.add_field(name="Last updated", value=lastmodified, inline=False)
+	for field in fields:
+		embed.add_field(name=field[0], value=stats.get(field[1]), inline=False)
 	await ctx.respond(embed=embed)
 
 @discordClient.slash_command(description="See the biggest fish a user caught this season")
@@ -392,7 +337,7 @@ async def fortnite_map(ctx):
 			await asyncio.sleep(2)
 			await ctx.edit(file=discord.File(newuuid + ".png"))
 			if os.path.exists(newuuid + ".png"):
-				os.remove(newuuid + ".png") #remove the image when we're done with it
+				os.remove(newuuid + ".png")
 	else:
 		await ctx.respond("A " + str(r.status_code) + " happened")
 
@@ -465,18 +410,14 @@ async def on_message(message):
 	message.content = message.content.lower()
 	if message.author == discordClient.user:
 		return
-	
+	bl = [row[0] for row in cursor.execute("SELECT hex FROM blacklist").fetchall()]
+	wl = [row[0] for row in cursor.execute("SELECT hex FROM whitelist").fetchall()]
 	for character in message.content:
 		char = character.encode("utf-8").hex()
-		bl = cursor.execute("SELECT hex FROM blacklist WHERE hex = ?", (char,)).fetchall()
-		if bl:
+		if (char in bl):
 			await message.delete()
 			return
-		#print("Character: " + character + ". Hex: " + char)
-		if len(char) > 2 and len(char) < 8:
-			wl = cursor.execute("SELECT hex FROM whitelist WHERE hex = ?", (char,)).fetchall()
-			if wl:
-				continue
+		if len(char) > 2 and len(char) < 8 and (char not in wl):
 			print("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
 			await message.delete()
 			return
@@ -499,13 +440,9 @@ async def on_message(message):
 						return
 				ocr = re.findall(r'(?i)aldi', detect_text_uri(embed.thumbnail.url))
 				if ocr:
-					try:
 						print("Found Aldi text in image!")
 						await message.delete()
 						await message.channel.send("ALDI detected. Confidence: 1. 🖕") 
-						return
-					except:
-						print("Couldn't delete image")
 						return
 				if not ocr:
 					print("Couldn't find Aldi text. Searching for logo instead...")
@@ -520,11 +457,10 @@ async def on_message(message):
 							return
 					if logos:
 						await message.add_reaction("👀")
-	
-	message.content = re.sub('[^0-9a-zA-Z]+', '', message.content)
-	message.content = (message.content.encode('ascii', 'ignore')).decode("utf-8")
-	ree = re.findall(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', message.content)
-	if ree:
+
+	message.content = re.sub(r'[^0-9a-zA-Z]+', '', message.content)
+	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
+	if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', message.content):
 		await message.delete()
 		return
 	
@@ -587,6 +523,9 @@ async def on_message(message):
 							print("probably aldi")
 							await message.delete()
 							await message.channel.send("Might be <store> but who knows really. Confidence: not very high but it's worth the risk 🖕")
+						if 'electric blue' in label.description:
+							await message.add_reaction("⚡")
+							await message.add_reaction("🟦")
 					if labels:
 						await message.add_reaction("👀")
 			if os.path.exists(myuuid):
@@ -601,42 +540,17 @@ async def on_message(message):
 
 @discordClient.event
 async def on_voice_state_update(member, before, after):
-	audios = ["assets/echo.mp3"]
-	await asyncio.sleep(0.5)
-	if member == discordClient.user:
-		return
-	voice_state = member.guild.voice_client
-	if voice_state:
-		return
-	if before.channel == None:
-		print(str(member) + " joined " + str(after.channel.id))
-		users = cursor.execute("SELECT * from pingme").fetchall()
-		for user in users:
-			if member.id == user[0]:
-				return
-			else:
-				await after.channel.send("<@" + str(user[0]) + ">, " + str(member) + " just joined.")
-		if not voice_state:
-			await after.channel.connect()
-			voice_state = member.guild.voice_client
-			voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source=random.choice(audios)))
-			await asyncio.sleep(2)
-			await voice_state.disconnect()
-	if (before.channel and after.channel) and (before.channel.id != after.channel.id) and not voice_state:
-		print(str(member) + " switched from " + str(before.channel.id) + " to " + str(after.channel.id))
-		await after.channel.connect()
-		voice_state = member.guild.voice_client
-		#await voice_state.move_to(after.channel)
-		voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source=random.choice(audios)))
-		await asyncio.sleep(2)
-		await voice_state.disconnect()
-	if (after.channel == None) and (len(before.channel.members) > 0) and not voice_state:
-		print(str(member) + " left " + str(before.channel.id))
-		await before.channel.connect()
-		voice_state = member.guild.voice_client
-		voice_state.play(discord.FFmpegPCMAudio(executable=os.getenv('FFMPEG'), source=random.choice(audios)))
-		await asyncio.sleep(2)
-		await voice_state.disconnect()
+    if member == discordClient.user:
+        return
+    if before.channel is None and after.channel is not None:
+        print(f"{member} joined {after.channel.id}")
+        users = cursor.execute("SELECT * from pingme").fetchall()
+        users_id = [user[0] for user in users]
+        if member.id in users_id:
+            return
+        else:
+            for user_id in users_id:
+                await after.channel.send(f"<@{user_id}>, {member} just joined.")
 
 @discordClient.event
 async def on_raw_message_edit(payload):
@@ -645,45 +559,42 @@ async def on_raw_message_edit(payload):
 		channel = discordClient.get_channel(payload.channel_id)
 		message = await channel.fetch_message(payload.message_id)
 	edited_message = payload.data['content']
+	bl = [row[0] for row in cursor.execute("SELECT hex FROM blacklist").fetchall()]
+	wl = [row[0] for row in cursor.execute("SELECT hex FROM whitelist").fetchall()]
 	for character in edited_message:
 		char = character.encode("utf-8").hex()
-		#print("Character: " + character + ". Hex: " + char)
-		if len(char) > 2 and len(char) < 8:
-			wl = cursor.execute("SELECT hex FROM whitelist WHERE hex = ?", (char,)).fetchall()
-			if wl:
-				continue
+		if (char in bl):
+			await message.delete()
+			return
+		if len(char) > 2 and len(char) < 8 and (char not in wl):
 			print("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
 			await message.delete()
 			return
 
-	ree = re.findall(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', edited_message)
-	if ree:
+	if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', edited_message):
 		await message.delete()
-		return
 
 @discordClient.event
 async def on_reaction_add(reaction, user):
 	if user == discordClient.user:
 		return
-	if reaction.emoji == "🇱" or reaction.emoji == "🇦" or reaction.emoji == "🇩" or reaction.emoji == "🇮" or reaction.emoji == "🅰️":
+	bad_emoji = ["🇱", "🇦", "🇩", "🇮", "🅰️"]
+	if reaction.emoji in bad_emoji:
 		await reaction.clear()
-	id = reaction.message.id
-	users = await reaction.users().flatten()
-	for lad in users:
-		if lad == discordClient.user and reaction.emoji == "👀":
+		return
+	if reaction.emoji == "👀" and user != discordClient.user:
+		users = await reaction.users().flatten()
+		if discordClient.user in users:
 			await reaction.clear()
-			response = cursor.execute("SELECT guess, score FROM ai WHERE id = ?", (id,),).fetchall()
-			# for resp in response:
-			# 	await reaction.message.channel.send("Guess: " + resp[1] + "\nConfidence: " + str(resp[2]))
+			id = reaction.message.id
+			response = cursor.execute("SELECT guess, score FROM ai WHERE id = ?", (id,)).fetchall()
 			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
 
 @discordClient.event
 async def on_member_update(before, after):
-	if before == discordClient.user:
-		return
-	if after.nick:
-		ree = re.findall(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', after.nick)
-	if ree:
-		await after.edit(nick='loser')
+    if before == discordClient.user or not after.nick:
+        return
+    if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', after.nick):
+        await after.edit(nick='loser')
 
 discordClient.run(os.getenv('TOKEN'))
