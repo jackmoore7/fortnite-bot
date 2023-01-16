@@ -3,14 +3,12 @@ import requests
 import shutil
 import discord
 import re
-import random
 import uuid
 import asyncio
 import feedparser
 from discord.ext import tasks
 from discord.ui import Button, View
 import sqlite3 as sl
-import datetime
 from datetime import timezone
 from dotenv import load_dotenv
 import glob
@@ -98,67 +96,70 @@ async def fortnite_shop_update_v2():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
 		r = fortnite_shop()
-		uid = cursor.execute("SELECT uid FROM shop").fetchall()[0][0]
+		uid = cursor.execute("SELECT uid FROM shop").fetchone()[0]
 		new_uid = r['lastUpdate']['uid']
 		if new_uid != uid:
-			today = []
-			for item in r['shop']:
-				image = item['displayAssets'][0]['full_background']
-				name = item['displayName']
-				toople = (image, name)
-				today.append(toople)
+			today = [(item['displayAssets'][0]['full_background'], item['displayName']) for item in r['shop']]
+			# today = []
+			# for item in r['shop']:
+			# 	image = item['displayAssets'][0]['full_background']
+			# 	name = item['displayName']
+			# 	toople = (image, name)
+			# 	today.append(toople)
 			yesterday = cursor.execute("SELECT * FROM shop_content").fetchall()
-			diff = []
-			for item in today:
-				if item not in yesterday:
-					diff.append(item)
+			diff = [item for item in today if item not in yesterday]
+			# diff = []
+			# for item in today:
+			# 	if item not in yesterday:
+			# 		diff.append(item)
 			if len(diff) < 1:
-				await channel.send("The shop was just updated, but there are no new items. Length changed by " + str(len(diff)))
+				await channel.send(f"The shop was just updated, but there are no new items. Length changed by {len(diff)}.")
 				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 				return
 			for item in diff:
 				e = requests.get(item[0], stream=True)
-				e.raise_for_status()
+				await asyncio.sleep(5)
 				image_size = e.headers['Content-Length']
 				newuuid = str(uuid.uuid4())
 				with open("temp_images/" + newuuid + ".png", "wb") as f:
 					for chunk in e.iter_content(int(image_size)):
 						f.write(chunk)
 			await channel.send(f"A new shop rotation was just released. There are {len(diff)} new items.")
+
+			item_list = cursor.execute("SELECT item, id FROM shop_ping").fetchall()
 			for item in diff:
-					item_list = cursor.execute("SELECT item FROM shop_ping").fetchall()
-					for cosmetic in item_list:
-						cosmetic = cosmetic[0]
-						if cosmetic.lower() in item[1].lower():
-							users = cursor.execute("SELECT id FROM shop_ping WHERE item = ?", (cosmetic,)).fetchall()
-							for user in users:
-								user = user[0]
-								await channel.send("<@" + str(user) + ">, " + item[1] + " is in the shop\nTriggered by your keyword: " + cosmetic)
+				matching_items = [i for i, u in item_list if i.lower() in item[1].lower()]
+				for cosmetic in matching_items:
+					users = [u for i, u in item_list if i == cosmetic]
+					for user in users:
+						await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
+
+			# for item in diff:
+			# 		item_list = cursor.execute("SELECT item FROM shop_ping").fetchall()
+			# 		for cosmetic in item_list:
+			# 			cosmetic = cosmetic[0]
+			# 			if cosmetic.lower() in item[1].lower():
+			# 				users = cursor.execute("SELECT id FROM shop_ping WHERE item = ?", (cosmetic,)).fetchall()
+			# 				for user in users:
+			# 					user = user[0]
+			# 					await channel.send("<@" + str(user) + ">, " + item[1] + " is in the shop\nTriggered by your keyword: " + cosmetic)
 			files = glob.glob('temp_images/*.png')
 			for f in files:
 				await channel.send(file=discord.File(f))
 				os.remove(f)
 			await channel.send("---")
 			cursor.execute("DELETE FROM shop_content")
-			for item in today:
-				cursor.execute("INSERT INTO shop_content VALUES (?, ?)", (item[0], item[1]))
+			cursor.executemany("INSERT INTO shop_content VALUES (?, ?)", [(item[0], item[1]) for item in today])
+			# for item in today:
+			# 	cursor.execute("INSERT INTO shop_content VALUES (?, ?)", (item[0], item[1]))
 			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 	except Exception as e:
-		print("Something went wrong ((V2)): " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		print(f"Something went wrong ((V2)): {e}\nRestarting internal task in 1 minute.")
 		files = glob.glob('temp_images/*.png')
 		for f in files:
 			os.remove(f)
 		await asyncio.sleep(60)
 		fortnite_shop_update_v2.restart()
-
-@discordClient.slash_command()
-async def dc(ctx):
-	voice_state = ctx.guild.voice_client
-	if voice_state:
-		await voice_state.disconnect()
-		await ctx.respond(":thumbsup:", ephemeral=True)
-	else:
-		await ctx.respond("Not connected to a voice channel", ephemeral=True)
 
 @discordClient.slash_command(description="[Owner] Clear messages")
 async def purge(ctx, amount):
@@ -170,15 +171,14 @@ async def purge(ctx, amount):
 
 @discordClient.slash_command(description="Get pinged when someone joins a voice channel")
 async def pingme(ctx):
-	id = ctx.user.id
-	users = cursor.execute("SELECT * FROM pingme").fetchall()
-	for user in users:
-		if id == user[0]:
-			cursor.execute("DELETE FROM pingme WHERE user = ?", (id,))
-			await ctx.respond("Removed ✅")
-			return
-	cursor.execute("INSERT INTO pingme VALUES (?)", (id,))
-	await ctx.respond("Added ✅")
+	user_id = ctx.user.id
+	user = cursor.execute("SELECT * FROM pingme WHERE user = ?", (user_id,)).fetchone()
+	if user:
+		cursor.execute("DELETE FROM pingme WHERE user = ?", (user_id,))
+		await ctx.respond("Removed ✅")
+	else:
+		cursor.execute("INSERT INTO pingme VALUES (?)", (user_id,))
+		await ctx.respond("Added ✅")
 	
 
 notifyme = discordClient.create_group("notifyme", "Get notified when an item you want is in the shop")
@@ -188,7 +188,7 @@ async def edit(ctx, item):
 	if len(item) > 25:
 		await ctx.respond("String must be less than 26 characters")
 		return
-	if 'aldi' in item:
+	if 'aldi' in item.lower():
 		await ctx.respond("No")
 		return
 	text_check = re.findall(r'(?i)[^a-z0-9\s\-\']', item)
@@ -197,39 +197,27 @@ async def edit(ctx, item):
 		return
 	id = ctx.user.id
 	if len(cursor.execute("SELECT * FROM shop_ping WHERE item = ? AND id = ?", (item, id)).fetchall()) > 0:
-		try:
-			cursor.execute("DELETE FROM shop_ping WHERE item = ? AND id = ?", (item, id))
-			await ctx.respond("Removed ✅")
-			return
-		except:
-			await ctx.respond("Something went wrong")
-	try:
-		cursor.execute("INSERT INTO shop_ping VALUES (?, ?)", (id, item))
-		await ctx.respond("Added ✅")
-	except:
-		await ctx.respond("Something went wrong")
+		cursor.execute("DELETE FROM shop_ping WHERE item = ? AND id = ?", (item, id))
+		await ctx.respond("Removed ✅")
+		return
+	cursor.execute("INSERT INTO shop_ping VALUES (?, ?)", (id, item))
+	await ctx.respond("Added ✅")
 
 @notifyme.command(description="View the list of cosmetics you want notifications for")
 async def list(ctx):
-	id = ctx.user.id
-	list = []
-	items = cursor.execute("SELECT item FROM shop_ping WHERE id = ?", (id,)).fetchall()
-	for item in items:
-		list.append(item[0])
-	await ctx.respond(list)
+	items = cursor.execute("SELECT item FROM shop_ping WHERE id = ?", (ctx.user.id,)).fetchall()
+	items = [item[0] for item in items]
+	await ctx.respond(items)
 
 @discordClient.slash_command(description="Subscribe/unsubscribe to Fortnite status updates")
 async def update(ctx):
-	roles = ctx.user.roles
 	upd8 = ctx.guild.get_role(int(os.getenv('UPD8_ROLE')))
-	print(roles)
-	for role in roles:
-		if role == upd8:
-			await ctx.user.remove_roles(upd8)
-			await ctx.respond("Removed role")
-			return
-	await ctx.user.add_roles(upd8)
-	await ctx.respond("Added role")
+	if upd8 in ctx.user.roles:
+		await ctx.user.remove_roles(upd8)
+		await ctx.respond("Removed ✅")
+	else:
+		await ctx.user.add_roles(upd8)
+		await ctx.respond("Added ✅")
 
 @discordClient.slash_command(description="Check a user's all-time Fortnite statistics")
 async def fortnite(ctx, username):
@@ -399,11 +387,8 @@ async def blacklist(ctx, hex):
 
 @discordClient.slash_command()
 async def hexify(ctx, string):
-	chars = []
-	for character in string:
-		char = character.encode("utf-8").hex()
-		chars.append(char)
-	await ctx.respond(chars, ephemeral=True)
+	hex_string = "".join([character.encode("utf-8").hex() for character in string])
+	await ctx.respond(hex_string, ephemeral=True)
 
 @discordClient.event
 async def on_message(message):
