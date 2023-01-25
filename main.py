@@ -9,17 +9,19 @@ import feedparser
 from discord.ext import tasks
 from discord.ui import Button, View
 import sqlite3 as sl
-from datetime import timezone
 from dotenv import load_dotenv
 import glob
+import urllib.request
+from num2words import num2words
 
 load_dotenv()
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.getenv('GOOGLE_KEY')
 
-from vision import *
-from API import *
+from gcloud import *
+from third_party_api import *
 from key_handling import *
+from epic_api import *
 
 intents = discord.Intents.all()
 intents.members = True
@@ -100,32 +102,16 @@ async def fortnite_shop_update_v2():
 		new_uid = r['lastUpdate']['uid']
 		if new_uid != uid:
 			today = [(item['displayAssets'][0]['full_background'], item['displayName']) for item in r['shop']]
-			# today = []
-			# for item in r['shop']:
-			# 	image = item['displayAssets'][0]['full_background']
-			# 	name = item['displayName']
-			# 	toople = (image, name)
-			# 	today.append(toople)
 			yesterday = cursor.execute("SELECT * FROM shop_content").fetchall()
-			diff = [item for item in today if item not in yesterday]
-			# diff = []
-			# for item in today:
-			# 	if item not in yesterday:
-			# 		diff.append(item)
+			diff = [tup for tup in today if tup[1] not in (y[1] for y in yesterday)]
 			if len(diff) < 1:
 				await channel.send(f"The shop was just updated, but there are no new items. Length changed by {len(diff)}.")
 				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 				return
 			for item in diff:
-				e = requests.get(item[0], stream=True)
-				await asyncio.sleep(5)
-				image_size = e.headers['Content-Length']
 				newuuid = str(uuid.uuid4())
-				with open("temp_images/" + newuuid + ".png", "wb") as f:
-					for chunk in e.iter_content(int(image_size)):
-						f.write(chunk)
-			await channel.send(f"A new shop rotation was just released. There are {len(diff)} new items.")
-
+				urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
+			await channel.send(f"{len(diff)} items were just added to the shop.")
 			item_list = cursor.execute("SELECT item, id FROM shop_ping").fetchall()
 			for item in diff:
 				matching_items = [i for i, u in item_list if i.lower() in item[1].lower()]
@@ -133,16 +119,6 @@ async def fortnite_shop_update_v2():
 					users = [u for i, u in item_list if i == cosmetic]
 					for user in users:
 						await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
-
-			# for item in diff:
-			# 		item_list = cursor.execute("SELECT item FROM shop_ping").fetchall()
-			# 		for cosmetic in item_list:
-			# 			cosmetic = cosmetic[0]
-			# 			if cosmetic.lower() in item[1].lower():
-			# 				users = cursor.execute("SELECT id FROM shop_ping WHERE item = ?", (cosmetic,)).fetchall()
-			# 				for user in users:
-			# 					user = user[0]
-			# 					await channel.send("<@" + str(user) + ">, " + item[1] + " is in the shop\nTriggered by your keyword: " + cosmetic)
 			files = glob.glob('temp_images/*.png')
 			for f in files:
 				await channel.send(file=discord.File(f))
@@ -150,8 +126,6 @@ async def fortnite_shop_update_v2():
 			await channel.send("---")
 			cursor.execute("DELETE FROM shop_content")
 			cursor.executemany("INSERT INTO shop_content VALUES (?, ?)", [(item[0], item[1]) for item in today])
-			# for item in today:
-			# 	cursor.execute("INSERT INTO shop_content VALUES (?, ?)", (item[0], item[1]))
 			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 	except Exception as e:
 		print(f"Something went wrong ((V2)): {e}\nRestarting internal task in 1 minute.")
@@ -160,6 +134,36 @@ async def fortnite_shop_update_v2():
 			os.remove(f)
 		await asyncio.sleep(60)
 		fortnite_shop_update_v2.restart()
+
+@discordClient.slash_command(description="[Owner] Add friend")
+async def add_friend(ctx, user_id):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+	else:
+		e = add_friend(user_id)
+		await ctx.respond(e)
+
+@discordClient.slash_command(description="[Owner] List all friends")
+async def list_friends(ctx, include_pending=''):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+	else:
+		e = get_all_friends(include_pending)
+		await ctx.respond(e)
+
+@discordClient.slash_command(description="Get Epic Games username by ID")
+async def get_username(ctx, id):
+	e = get_user_by_id(id)
+	await ctx.respond(e['displayName'])
+
+@discordClient.slash_command(description="Return when a user was last online")
+async def get_last_online(ctx, username):
+	id = getAccountID(username)
+	e = get_user_presence(id)
+	if e:
+		await ctx.respond(f"{username} was last online at {e}")
+	else:
+		await ctx.respond("That user isn't in my friends list.")
 
 @discordClient.slash_command(description="[Owner] Clear messages")
 async def purge(ctx, amount):
@@ -403,9 +407,23 @@ async def on_message(message):
 			await message.delete()
 			return
 		if len(char) > 2 and len(char) < 8 and (char not in wl):
-			print("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
+			ch = discordClient.get_channel(int(os.getenv('TEST_CHANNEL')))
+			await ch.send("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
 			await message.delete()
 			return
+
+	time = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
+	if(time):
+		time = time.group()
+		time = time.split(":")
+		if int(time[0]) <= 12:
+			time[0] = int(time[0]) + 12
+		if time[1] == "00":
+			await message.channel.send(num2words(time[0]) + " o'clock")
+		elif time[1] == "30":
+			await message.channel.send("half past " + num2words(time[0]))
+		else:
+			await message.channel.send(num2words(time[1]) + " past " + num2words(time[0]))
 
 	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
 	if urls:
@@ -442,6 +460,15 @@ async def on_message(message):
 							return
 					if logos:
 						await message.add_reaction("👀")
+
+	if not urls:
+		if len(message.content) > 125:
+			classify = classify_text(message.content)
+			if classify:
+				for category in classify:
+					if category.confidence > 49:
+						cursor.execute("INSERT INTO ai_text VALUES (?, ?, ?)", [message.id, category.name, category.confidence])
+						await message.add_reaction("💡")
 
 	message.content = re.sub(r'[^0-9a-zA-Z]+', '', message.content)
 	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
@@ -573,6 +600,13 @@ async def on_reaction_add(reaction, user):
 			await reaction.clear()
 			id = reaction.message.id
 			response = cursor.execute("SELECT guess, score FROM ai WHERE id = ?", (id,)).fetchall()
+			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
+	if reaction.emoji == "💡" and user != discordClient.user:
+		users = await reaction.users().flatten()
+		if discordClient.user in users:
+			await reaction.clear()
+			id = reaction.message.id
+			response = cursor.execute("SELECT guess, score FROM ai_text WHERE id = ?", (id,)).fetchall()
 			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
 
 @discordClient.event
