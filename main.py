@@ -111,7 +111,10 @@ async def fortnite_shop_update_v2():
 			for item in diff:
 				newuuid = str(uuid.uuid4())
 				urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
-			await channel.send(f"{len(diff)} items were just added to the shop.")
+			if len(diff) == 1:
+				await channel.send("1 item was just added to the shop.")
+			else:	
+				await channel.send(f"{len(diff)} items were just added to the shop.")
 			item_list = cursor.execute("SELECT item, id FROM shop_ping").fetchall()
 			for item in diff:
 				matching_items = [i for i, u in item_list if i.lower() in item[1].lower()]
