@@ -6,6 +6,9 @@ import re
 import uuid
 import asyncio
 import feedparser
+import json
+import time
+from datetime import datetime as dt
 from discord.ext import tasks
 from discord.ui import Button, View
 import sqlite3 as sl
@@ -39,6 +42,7 @@ async def on_ready():
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
 	fortnite_shop_update_v2.start()
+	fortnite_shop_offers.start()
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
@@ -53,7 +57,7 @@ async def fortnite_update_bg():
 			embed.add_field(name="Build", value=response, inline=False)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 	except Exception as e:
-		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		print("Something went wrong getting the Fortnite manifest: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
 		await asyncio.sleep(60)
 		fortnite_update_bg.restart()
 
@@ -64,7 +68,11 @@ async def tv_show_update_bg():
 		url = os.getenv('SHOWRSS')
 		feed = feedparser.parse(url)
 		last_guid = cursor.execute("select * from rss").fetchall()[0][0]
-		latest_guid = feed['entries'][0]['guid']
+		if len(feed['entries']) > 0:
+			latest_guid = feed['entries'][0]['guid']
+		else:
+			print("No recent episode entries. Skipping...")
+			return
 		if latest_guid != last_guid:
 			rssembed = discord.Embed(title = "A new episode just released!")
 			rssembed.add_field(name="Name", value=feed['entries'][0]['tv_raw_title'], inline=False)
@@ -72,7 +80,7 @@ async def tv_show_update_bg():
 			cursor.execute("UPDATE rss SET guid = ?", (latest_guid,))
 			await user.send(embed = rssembed)
 	except Exception as e:
-		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		print("Something went wrong getting the TV show RSS: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
 		await asyncio.sleep(60)
 		tv_show_update_bg.restart()
 
@@ -89,7 +97,7 @@ async def fortnite_status_bg():
 			embed.add_field(name="Status", value=response)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 	except Exception as e:
-		print("Something went wrong: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		print("Something went wrong getting the Fortnite status: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
 		await asyncio.sleep(60)
 		fortnite_status_bg.restart()
 
@@ -125,7 +133,7 @@ async def fortnite_shop_update_v2():
 			files = glob.glob('temp_images/*.png')
 			for f in files:
 				await channel.send(file=discord.File(f))
-				os.remove(f)
+				os.remove(f)			
 			await channel.send("---")
 			cursor.execute("DELETE FROM shop_content")
 			cursor.executemany("INSERT INTO shop_content VALUES (?, ?)", [(item[0], item[1]) for item in today])
@@ -137,6 +145,110 @@ async def fortnite_shop_update_v2():
 			os.remove(f)
 		await asyncio.sleep(60)
 		fortnite_shop_update_v2.restart()
+
+@tasks.loop(minutes=60)
+async def fortnite_shop_offers():
+	try:
+		today_offers = get_fortnite_shop_offers()
+		yesterday_offers = cursor.execute("SELECT * FROM shop_offers").fetchall()
+		offer_diff = [tup for tup in today_offers if tup['title'] not in (y[1] for y in yesterday_offers)]
+		if len(offer_diff) > 0:
+			print(offer_diff)
+			channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+			await channel.send(f"There are {len(offer_diff)} new offers in the shop")
+			for item in offer_diff:
+				if item['expiryDate']:
+					date_time_obj = dt.strptime(item['expiryDate'], '%Y-%m-%dT%H:%M:%S.%fZ')
+					struct_time = date_time_obj.timetuple()
+					timestamp = f"<t:{int(time.mktime(struct_time))}:R>"
+				else:
+					timestamp = "<t:2147483647:R>"
+				og_price = float(item['price']['totalPrice']['fmtPrice']['originalPrice'][2:])
+				discount_price = float(item['price']['totalPrice']['fmtPrice']['discountPrice'][2:])
+				difference = og_price - discount_price
+				if difference != 0:
+					await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']} (${difference} off!)\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
+				else:
+					await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']}\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
+		else:
+			print("No new shop offers")
+			return
+		cursor.execute("DELETE FROM shop_offers")
+		for item in today_offers:
+			cursor.execute("INSERT INTO shop_offers VALUES (?, ?, ?, ?, ?, ?)", (item['id'], item['title'], item['expiryDate'], item['keyImages'][0]['url'], item['price']['totalPrice']['fmtPrice']['originalPrice'], item['price']['totalPrice']['fmtPrice']['discountPrice']))
+	except Exception as e:
+		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+		await channel.send("Something went HORRIBLY TERRIBLY wrong with the shop offers task. Restarting in 30 minutes.")
+		await asyncio.sleep(1800)
+		fortnite_shop_offers.restart()
+
+#@discordClient.slash_command(descrption="Get the store")
+# async def store(ctx):
+# 	date = dt.utcnow().date()
+# 	body = {
+#     "query":"query searchStoreQuery($allowCountries: String, $category: String, $count: Int, $country: String!, $keywords: String, $locale: String, $namespace: String, $itemNs: String, $sortBy: String, $sortDir: String, $start: Int, $tag: String, $releaseDate: String, $withPrice: Boolean = false, $withPromotions: Boolean = false, $priceRange: String, $freeGame: Boolean, $onSale: Boolean, $effectiveDate: String) {\n  Catalog {\n    searchStore(\n      allowCountries: $allowCountries\n      category: $category\n      count: $count\n      country: $country\n      keywords: $keywords\n      locale: $locale\n      namespace: $namespace\n      itemNs: $itemNs\n      sortBy: $sortBy\n      sortDir: $sortDir\n      releaseDate: $releaseDate\n      start: $start\n      tag: $tag\n      priceRange: $priceRange\n      freeGame: $freeGame\n      onSale: $onSale\n      effectiveDate: $effectiveDate\n    ) {\n      elements {\n       id\n        namespace\n      title\n      title4Sort\n                description\n       creationDate\n        viewableDate\n        releaseDate\n        pcReleaseDate\n        effectiveDate\n        expiryDate\n        lastModifiedDate\n        keyImages {\n          type\n          url\n          size\n          width\n          height\n          uploadedDate\n       }\n        seller {\n          id\n          name\n        }\n        productSlug\n          urlSlug\n        url\n        tags {\n          id\n        }\n        items {\n          id\n          namespace\n        }\n        customAttributes {\n          key\n          value\n        }\n        categories {\n          path\n        }\n        catalogNs {\n          mappings(pageType: \"productHome\") {\n            pageSlug\n            pageType\n          }\n        }\n        offerMappings {\n          pageSlug\n          pageType\n        }\n        developerDisplayName\n        publisherDisplayName\n        currentPrice\n        basePrice\n        price(country: $country) @include(if: $withPrice) {\n          totalPrice {\n            discountPrice\n            originalPrice\n            voucherDiscount\n            discount\n            currencyCode\n            currencyInfo {\n              decimals\n            }\n            fmtPrice(locale: $locale) {\n              originalPrice\n              discountPrice\n              intermediatePrice\n            }\n          }\n          lineOffers {\n            appliedRules {\n              id\n              endDate\n              discountSetting {\n                discountType\n              }\n            }\n          }\n        }\n        promotions(category: $category) @include(if: $withPromotions) {\n          promotionalOffers {\n            promotionalOffers {\n              startDate\n              endDate\n              discountSetting {\n                discountType\n                discountPercentage\n              }\n            }\n          }\n          upcomingPromotionalOffers {\n            promotionalOffers {\n              startDate\n              endDate\n              discountSetting {\n                discountType\n                discountPercentage\n              }\n            }\n          }\n        }\n      }\n      paging {\n        count\n        total\n      }\n    }\n  }\n}\n",
+#    "variables":{
+#       "category":"digitalextras/book|addons|digitalextras/soundtrack|digitalextras/video",
+#       "count": 100,
+#       "country":"AU",
+#       "keywords":"",
+#       "locale":"en",
+#       "namespace":"fn",
+#       "sortBy":"releaseDate",
+#       "sortDir":"DESC",
+#       "allowCountries":"AU",
+#       "start":0,
+#       "tag":"",
+#       "releaseDate":f"[,{date}]",
+#       "withPrice":True
+#    }
+# }
+# 	r = requests.post("https://www.epicgames.com/graphql?operationName=searchStoreQuery", json=body)
+# 	r = r.json()
+# 	r = r['data']['Catalog']['searchStore']['elements']
+# 	for item in r:
+# 		cursor.execute("INSERT INTO shop_offers VALUES (?, ?, ?, ?, ?, ?)", (item['id'], item['title'], item['expiryDate'], item['keyImages'][0]['url'], item['price']['totalPrice']['fmtPrice']['originalPrice'], item['price']['totalPrice']['fmtPrice']['discountPrice']))
+# 	result = cursor.execute("SELECT * FROM shop_offers").fetchall()
+# 	print(result)
+
+#@discordClient.slash_command()
+async def fekajsd(ctx):
+	items = cursor.execute("SELECT * FROM shop_offers").fetchall()
+	print(items)
+	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+	await channel.send(f"There are {len(items)} new offers in the shop")
+	for item in items:
+		if item[2]:
+			date_time_obj = dt.strptime(item[2], '%Y-%m-%dT%H:%M:%S.%fZ')
+			struct_time = date_time_obj.timetuple()
+			timestamp = f"<t:{int(time.mktime(struct_time))}:R>"
+		else:
+			timestamp = "<t:2147483647:R>"
+		# date_time_obj = dt.strptime(item[2], '%Y-%m-%dT%H:%M:%S.%fZ')
+		# timestamp = f"<t:{time.mktime(date_time_obj)}:R>"
+		og_price = float(item[4][2:])
+		discount_price = float(item[5][2:])
+		difference = og_price - discount_price
+		if difference != 0:
+			await channel.send(f"{item[1]}\n{item[5]} (${difference} off!)\nExpires {timestamp}\n{item[3]}")
+		else:
+			await channel.send(f"{item[1]}\n{item[5]}\nExpires {timestamp}\n{item[3]}")
+
+#@discordClient.slash_command(description="Get the store v2")
+async def storev2(ctx):
+	r = get_fortnite_shop1()
+	r = r['storefronts'][28]['catalogEntries']
+	with open('result1.json', 'w') as fp:
+		json.dump(r, fp)
+	ids = []
+	for thing in r:
+		ids.append(thing['appStoreId'][1])
+	#print(ids)
+		
+	result = get_fortnite_shop_item_details(ids[0])
+	print(result)
+	with open('result2.json', 'w') as fp:
+		json.dump(result, fp)
 
 @discordClient.slash_command(description="[Owner] Add friend")
 async def add_friend(ctx, user_id):
@@ -409,7 +521,7 @@ async def on_message(message):
 		if (char in bl):
 			await message.delete()
 			return
-		if len(char) > 2 and len(char) < 8 and (char not in wl):
+		if len(char) > 2 and len(char) < 8 and (char not in wl) and (message.author.id == os.getenv('ANDY')): #lol
 			ch = discordClient.get_channel(int(os.getenv('TEST_CHANNEL')))
 			await ch.send("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
 			await message.delete()
@@ -618,5 +730,11 @@ async def on_member_update(before, after):
         return
     if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', after.nick):
         await after.edit(nick='loser')
+	
+@discordClient.event
+async def on_presence_update(before, after):
+	if after.activity and after.activity.name == "Fortnite" and after.id == int(os.getenv('LUCI')):
+		channel = discordClient.get_channel(int(os.getenv('CRINGE_ZONE')))
+		await channel.send("GUYS LUCI IS PLAYING FORTNITE. SHE'S NOT ALLOWED TO PLAY FORTNITE UNTIL: <t:1683075600:R>. LAUGH AT HER!!!!!")
 
 discordClient.run(os.getenv('TOKEN'))

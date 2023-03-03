@@ -26,8 +26,9 @@ def get_fortnite_status(): #need to use the fortnite client token
         elif r['errorCode']:
             return r['errorCode']
     except:
-        print("Failed to get Fortnite status. No message or error code")
-        return None
+        print("Failed to get Fortnite status. Trying again in 1 minute.")
+        time.sleep(60)
+        return get_fortnite_status()
 
 def get_fortnite_update_manifest(): #need to use the launcher client token
     url = "https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/public/assets/v2/platform/Windows/namespace/fn/catalogItem/4fe75bbc5a674f4f9b356b5c90567da5/app/Fortnite/label/Live"
@@ -46,11 +47,42 @@ def get_fortnite_update_manifest(): #need to use the launcher client token
         elif r['errorCode']:
             return r['errorCode']
     except:
-        print("Failed to get launcher manifest")
-        return None
+        print("Failed to get launcher manifest. Trying again in 1 minute.")
+        time.sleep(60)
+        return get_fortnite_update_manifest()
+
+def get_fortnite_shop_offers():
+    date = dt.utcnow().date()
+    body = {
+    "query":"query searchStoreQuery($allowCountries: String, $category: String, $count: Int, $country: String!, $keywords: String, $locale: String, $namespace: String, $itemNs: String, $sortBy: String, $sortDir: String, $start: Int, $tag: String, $releaseDate: String, $withPrice: Boolean = false, $withPromotions: Boolean = false, $priceRange: String, $freeGame: Boolean, $onSale: Boolean, $effectiveDate: String) {\n  Catalog {\n    searchStore(\n      allowCountries: $allowCountries\n      category: $category\n      count: $count\n      country: $country\n      keywords: $keywords\n      locale: $locale\n      namespace: $namespace\n      itemNs: $itemNs\n      sortBy: $sortBy\n      sortDir: $sortDir\n      releaseDate: $releaseDate\n      start: $start\n      tag: $tag\n      priceRange: $priceRange\n      freeGame: $freeGame\n      onSale: $onSale\n      effectiveDate: $effectiveDate\n    ) {\n      elements {\n       id\n        namespace\n      title\n      title4Sort\n                description\n       creationDate\n        viewableDate\n        releaseDate\n        pcReleaseDate\n        effectiveDate\n        expiryDate\n        lastModifiedDate\n        keyImages {\n          type\n          url\n          size\n          width\n          height\n          uploadedDate\n       }\n        seller {\n          id\n          name\n        }\n        productSlug\n          urlSlug\n        url\n        tags {\n          id\n        }\n        items {\n          id\n          namespace\n        }\n        customAttributes {\n          key\n          value\n        }\n        categories {\n          path\n        }\n        catalogNs {\n          mappings(pageType: \"productHome\") {\n            pageSlug\n            pageType\n          }\n        }\n        offerMappings {\n          pageSlug\n          pageType\n        }\n        developerDisplayName\n        publisherDisplayName\n        currentPrice\n        basePrice\n        price(country: $country) @include(if: $withPrice) {\n          totalPrice {\n            discountPrice\n            originalPrice\n            voucherDiscount\n            discount\n            currencyCode\n            currencyInfo {\n              decimals\n            }\n            fmtPrice(locale: $locale) {\n              originalPrice\n              discountPrice\n              intermediatePrice\n            }\n          }\n          lineOffers {\n            appliedRules {\n              id\n              endDate\n              discountSetting {\n                discountType\n              }\n            }\n          }\n        }\n        promotions(category: $category) @include(if: $withPromotions) {\n          promotionalOffers {\n            promotionalOffers {\n              startDate\n              endDate\n              discountSetting {\n                discountType\n                discountPercentage\n              }\n            }\n          }\n          upcomingPromotionalOffers {\n            promotionalOffers {\n              startDate\n              endDate\n              discountSetting {\n                discountType\n                discountPercentage\n              }\n            }\n          }\n        }\n      }\n      paging {\n        count\n        total\n      }\n    }\n  }\n}\n",
+   "variables":{
+      "category":"digitalextras/book|addons|digitalextras/soundtrack|digitalextras/video",
+      "count": 100,
+      "country":"AU",
+      "keywords":"",
+      "locale":"en",
+      "namespace":"fn",
+      "sortBy":"releaseDate",
+      "sortDir":"DESC",
+      "allowCountries":"AU",
+      "start":0,
+      "tag":"",
+      "releaseDate":f"[,{date}]",
+      "withPrice":True
+        }
+    }
+    r = requests.post("https://www.epicgames.com/graphql?operationName=searchStoreQuery", json=body)
+    try:
+        r = r.json()
+        r = r['data']['Catalog']['searchStore']['elements']
+        return r
+    except:
+        print("Failed to get Fortnite shop offers. Trying again in 1 minute.")
+        time.sleep(60)
+        return get_fortnite_shop_offers()
 
 def get_fortnite_shop1():
-    url = "https://fortnite-public-service-prod11.ol.epicgames.com/fortnite/api/storefront/v2/catalog?rvn=5479"
+    url = "https://fortnite-public-service-prod11.ol.epicgames.com/fortnite/api/storefront/v2/catalog"
     key = cursor.execute("SELECT switch FROM keys").fetchone()[0]
     r = requests.get(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401:
@@ -59,6 +91,23 @@ def get_fortnite_shop1():
         get_device_auth_2()
         time.sleep(2)
         return get_fortnite_shop1()
+    return r.json()
+
+def get_fortnite_shop_item_details(id):
+    url = "https://catalog-public-service-prod06.ol.epicgames.com/catalog/api/shared/bulk/offers?returnItemDetails=True"
+    key = cursor.execute("SELECT switch FROM keys").fetchone()[0]
+    params = {
+        'id': id,
+		'country': "AU",
+		'locale': "EN"
+    }
+    r = requests.get(url, params=params, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
+    if r.status_code == 401:
+        x = dt.now().isoformat()
+        print("New device auth token needed at " + str(x))
+        get_device_auth_2()
+        time.sleep(2)
+        return get_fortnite_shop_item_details(id)
     return r.json()
 
 def add_friend(user_id):
