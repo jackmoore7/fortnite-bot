@@ -8,13 +8,14 @@ import asyncio
 import feedparser
 import json
 import time
+import sqlite3 as sl
+import glob
+import urllib.request
+
 from datetime import datetime as dt
 from discord.ext import tasks
 from discord.ui import Button, View
-import sqlite3 as sl
 from dotenv import load_dotenv
-import glob
-import urllib.request
 from num2words import num2words
 
 load_dotenv()
@@ -34,10 +35,33 @@ discordClient = discord.Bot(intents=intents)
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
 
+alphaNumRegex = r'[^0-9a-zA-Z]+'
+aldiRegex = r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*'
+aldiDirectRegex = r'(?i)aldi'
+stringRegex = r'(?i)[^a-z0-9\s\-\']'
+urlRegex = r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?'
+timeRegex = r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]'
+
+def timeToText(hour:int, minute:int):
+	if minute == 0:
+		return num2words(hour) + " o'clock"
+	elif minute == 15:
+		return "quarter past " + num2words(hour)
+	elif minute == 30:
+		return "half past " + num2words(hour)
+	elif minute == 45:
+		return "quarter to " + num2words(hour)
+	elif minute < 30:
+		return num2words(minute) + " past " + num2words(hour)
+	else:
+		return num2words(60 - minute) + " to " + num2words(hour)
+
 @discordClient.event
 async def on_ready():
 	print(f'{discordClient.user} is now online!')
-	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="for <store>"))
+	timeNow = timeToText(dt.time.hour, dt.time.minute)
+	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.custom, name=timeNow))
+	#await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="for <store>"))
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
@@ -310,7 +334,7 @@ async def edit(ctx, item):
 	if 'aldi' in item.lower():
 		await ctx.respond("No")
 		return
-	text_check = re.findall(r'(?i)[^a-z0-9\s\-\']', item)
+	text_check = re.findall(stringRegex, item)
 	if text_check:
 		await ctx.respond("Not a valid string. [a-z0-9\s\-'] only.")
 		return
@@ -509,6 +533,30 @@ async def hexify(ctx, string):
 	hex_string = "".join([character.encode("utf-8").hex() for character in string])
 	await ctx.respond(hex_string, ephemeral=True)
 
+def get24HourTime(hour:int, hourSent:int):
+	#if a message is sent in the evening with a small hour, or sent in the 
+	#morning with a large hour, its probably afternoon (with a little wiggle room)
+	if hour >= 0 and hour <= 23 and\
+			(hourSent > 17 and hour < 12 or\
+    		hourSent < 12 and hour > 12):
+		return hour + 12
+	return hour
+
+def getTimeMessage(messageHour:int, messageMin:int, createdHour:int):
+	hour = get24HourTime(messageHour, createdHour)
+	message = timeToText(hour, messageMin)
+	if messageHour > 12 and messageHour < 24:
+		message += " (24 hour time is the superior time 👍)"
+	return message
+
+def getMessageFromTimes(times:list, createdHour:int):
+	toSend = ""
+	for time in times:
+		time = time.group()
+		time = time.split(":") #[hour, min]
+		toSend += getTimeMessage(int(time[0]), int(time[1]), createdHour) + "\n"
+	return toSend
+
 @discordClient.event
 async def on_message(message):
 	message.content = message.content.lower()
@@ -527,20 +575,12 @@ async def on_message(message):
 			await message.delete()
 			return
 
-	time = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
-	if(time):
-		time = time.group()
-		time = time.split(":")
-		if int(time[0]) <= 12:
-			time[0] = int(time[0]) + 12
-		if time[1] == "00":
-			await message.channel.send(num2words(time[0]) + " o'clock")
-		elif time[1] == "30":
-			await message.channel.send("half past " + num2words(time[0]))
-		else:
-			await message.channel.send(num2words(time[1]) + " past " + num2words(time[0]))
+	times = re.findAll(timeRegex, message.content)
+	if len(times) != 0:
+		toSend = getMessageFromTimes(times, message.created_at.time.hour)
+		await message.channel.send(toSend)
 
-	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
+	urls = re.findall(urlRegex, message.content)
 	if urls:
 		print("URL detected")
 		await asyncio.sleep(1)
@@ -556,7 +596,7 @@ async def on_message(message):
 						print("Found Aldi text in embed title")
 						await message.delete()
 						return
-				ocr = re.findall(r'(?i)aldi', detect_text_uri(embed.thumbnail.url))
+				ocr = re.findall(aldiDirectRegex, detect_text_uri(embed.thumbnail.url))
 				if ocr:
 						print("Found Aldi text in image!")
 						await message.delete()
@@ -585,9 +625,9 @@ async def on_message(message):
 						cursor.execute("INSERT INTO ai_text VALUES (?, ?, ?)", [message.id, category.name, category.confidence])
 						await message.add_reaction("💡")
 
-	message.content = re.sub(r'[^0-9a-zA-Z]+', '', message.content)
+	message.content = re.sub(alphaNumRegex, '', message.content)
 	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
-	if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', message.content):
+	if re.search(aldiRegex, message.content):
 		await message.delete()
 		return
 	
@@ -611,7 +651,7 @@ async def on_message(message):
 			img = detect_text(myuuid)
 			ocr = None
 			if img:
-				ocr = re.findall(r'(?i)aldi', img)
+				ocr = re.findall(aldiDirectRegex, img)
 			if ocr:
 				try:
 					print("Found Aldi text in image! (attachment)")
@@ -698,8 +738,13 @@ async def on_raw_message_edit(payload):
 			await message.delete()
 			return
 
-	if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', edited_message):
+	if re.search(aldiRegex, edited_message):
 		await message.delete()
+
+	times = re.findAll(timeRegex, message.content)
+	if len(times) != 0:
+		toSend = getMessageFromTimes(times, message.created_at.time.hour)
+		await message.channel.send(toSend)
 
 @discordClient.event
 async def on_reaction_add(reaction, user):
@@ -728,7 +773,7 @@ async def on_reaction_add(reaction, user):
 async def on_member_update(before, after):
     if before == discordClient.user or not after.nick:
         return
-    if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', after.nick):
+    if re.search(aldiRegex, after.nick):
         await after.edit(nick='loser')
 	
 @discordClient.event
