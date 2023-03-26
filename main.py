@@ -59,9 +59,7 @@ def timeToText(hour:int, minute:int):
 @discordClient.event
 async def on_ready():
 	print(f'{discordClient.user} is now online!')
-	timeNow = timeToText(dt.time.hour, dt.time.minute)
-	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.custom, name=timeNow))
-	#await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="for <store>"))
+	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="for <store>"))
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
