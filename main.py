@@ -558,7 +558,7 @@ def time_to_text(hour:int, minute:int):
 	elif minute < 30:
 		return num2words(minute) + " past " + num2words(hour)
 	else:
-		return num2words(60 - minute) + " to " + num2words(hour)
+		return num2words(60 - minute) + " to " + num2words(hour+1)
 
 def get_24_hour_time(hour:int, hour_sent:int):
 	hour_sent = (hour_sent + 9) % 24 #convert gmt to aus time (will need to change for dls)
