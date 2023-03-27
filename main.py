@@ -546,6 +546,36 @@ async def hexify(ctx, string):
 	hex_string = "".join([character.encode("utf-8").hex() for character in string])
 	await ctx.respond(hex_string, ephemeral=True)
 
+def time_to_text(hour:int, minute:int):
+	if minute == 0:
+		return num2words(hour) + " o'clock"
+	elif minute == 15:
+		return "quarter past " + num2words(hour)
+	elif minute == 30:
+		return "half past " + num2words(hour)
+	elif minute == 45:
+		return "quarter to " + num2words(hour)
+	elif minute < 30:
+		return num2words(minute) + " past " + num2words(hour)
+	else:
+		return num2words(60 - minute) + " to " + num2words(hour)
+
+def get_24_hour_time(hour:int, hour_sent:int):
+	hour_sent = (hour_sent + 9) % 24 #convert gmt to aus time (will need to change for dls)
+	#if a message is sent in the evening with a small hour, or sent in the 
+	#morning with a large hour, its probably afternoon (with a little wiggle room)
+	print("hour:", hour, "created:", hour_sent)
+	if hour >= 0 and hour <= 23 and (hour_sent > 17 and hour < 12 or hour_sent < 12 and hour > 12):
+		return hour + 12
+	return hour
+
+def get_time_message(message_hour:int, message_min:int, created_hour:int):
+	hour = get_24_hour_time(message_hour, created_hour)
+	message = time_to_text(hour, message_min)
+	if message_hour > 12 and message_hour < 24:
+		message += " (24 hour time is the superior time 👍)"
+	return message
+
 @discordClient.event
 async def on_message(message):
 	message.content = message.content.lower()
@@ -565,17 +595,11 @@ async def on_message(message):
 			return
 
 	time = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
-	if(time):
+	if time:
 		time = time.group()
 		time = time.split(":")
-		if int(time[0]) <= 12:
-			time[0] = int(time[0]) + 12
-		if time[1] == "00":
-			await message.channel.send(num2words(time[0]) + " o'clock")
-		elif time[1] == "30":
-			await message.channel.send("half past " + num2words(time[0]))
-		else:
-			await message.channel.send(num2words(time[1]) + " past " + num2words(time[0]))
+		to_send = get_time_message(int(time[0]), int(time[1]), message.created_at.hour) + "\n"
+		await message.channel.send(to_send)
 
 	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
 	if urls:
