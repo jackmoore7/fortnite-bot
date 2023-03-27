@@ -1,4 +1,5 @@
 import os
+import sys
 import requests
 import shutil
 import discord
@@ -34,6 +35,8 @@ discordClient = discord.Bot(intents=intents)
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
 
+tasks_list = {}
+
 @discordClient.event
 async def on_ready():
 	print(f'{discordClient.user} is now online!')
@@ -43,6 +46,11 @@ async def on_ready():
 	fortnite_status_bg.start()
 	fortnite_shop_update_v2.start()
 	fortnite_shop_offers.start()
+	tasks_list["update"] = fortnite_update_bg
+	tasks_list["tv"] = tv_show_update_bg
+	tasks_list["status"] = fortnite_status_bg
+	tasks_list["shop"] = fortnite_shop_update_v2
+	tasks_list["offers"] = fortnite_shop_offers
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
@@ -256,6 +264,28 @@ async def storev2(ctx):
 	print(result)
 	with open('result2.json', 'w') as fp:
 		json.dump(result, fp)
+
+@discordClient.slash_command(description="[Owner] Stop an internal task")
+async def stop_task(ctx, task_name):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+	else:
+		try:
+			task = tasks_list.get(task_name)
+			if task:
+				await ctx.respond(f"{task} will stop when current loop is complete ✅")
+			else:
+				await ctx.respond(f"{task_name} not found.")
+		except Exception as e:
+			await ctx.respond(f"Task couldn't be stopped: {e}")
+
+@discordClient.slash_command(description="[Owner] Reboot the bot")
+async def reboot(ctx):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+	else:
+		await ctx.respond("Rebooting...")
+		os.execl(sys.executable, sys.executable, *sys.argv)
 
 @discordClient.slash_command(description="[Owner] Add friend")
 async def add_friend(ctx, user_id):

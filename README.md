@@ -1,7 +1,7 @@
 A bot I made for my friends and I. Feel free to message me if you have questions :)
 
-# ‼
-Important: This repo doesn't work out of the box! There are a *lot* of enviroment variables and the database isn't in this repo. You'll need to update these to your specs. 
+# ‼ Important
+This Discord bot doesn't work out of the box! There are a *lot* of enviroment variables and the database isn't in this repo. You'll need to update these to your specs. 
 
 ## Features
 ### Fortnite updates
