@@ -177,7 +177,10 @@ async def fortnite_shop_offers():
 		if len(offer_diff) > 0:
 			print(offer_diff)
 			channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-			await channel.send(f"There are {len(offer_diff)} new offers in the shop")
+			if len(offer_diff) == 1:
+				await channel.send(f"There is 1 new offer in the shop (lame)")
+			else:
+				await channel.send(f"There are {len(offer_diff)} new offers in the shop (wowie)")
 			for item in offer_diff:
 				if item['expiryDate']:
 					date_time_obj = dt.strptime(item['expiryDate'], '%Y-%m-%dT%H:%M:%S.%fZ')
