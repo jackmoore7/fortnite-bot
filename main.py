@@ -113,12 +113,15 @@ async def fortnite_shop_update_v2():
 			yesterday = cursor.execute("SELECT * FROM shop_content").fetchall()
 			diff = [tup for tup in today if tup[1] not in (y[1] for y in yesterday)]
 			if len(diff) < 1:
-				await channel.send(f"The shop was just updated, but there are no new items. Length changed by {len(diff)}.")
+				diff2 = [tup for tup in yesterday if tup[1] not in (t[1] for t in today)] #check if something was deleted from the list
+				for item in diff2:
+					await channel.send(f"{item[1]} was just deleted from the shop.")
 				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 				return
 			for item in diff:
 				newuuid = str(uuid.uuid4())
 				urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
+			print("Finished downloading shop images")
 			if len(diff) == 1:
 				await channel.send("1 item was just added to the shop.")
 			else:	
@@ -165,11 +168,14 @@ async def fortnite_shop_offers():
 					timestamp = "<t:2147483647:R>"
 				og_price = float(item['price']['totalPrice']['fmtPrice']['originalPrice'][2:])
 				discount_price = float(item['price']['totalPrice']['fmtPrice']['discountPrice'][2:])
-				difference = og_price - discount_price
-				if difference != 0:
-					await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']} (${difference} off!)\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
+				if og_price and discount_price:
+					difference = og_price - discount_price
+					if difference != 0:
+						await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']} (${difference} off!)\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
+					else:
+						await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']}\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
 				else:
-					await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']}\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
+					await channel.send(f"{item['title']}\nFree!\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
 		else:
 			print("No new shop offers")
 			return
@@ -177,6 +183,7 @@ async def fortnite_shop_offers():
 		for item in today_offers:
 			cursor.execute("INSERT INTO shop_offers VALUES (?, ?, ?, ?, ?, ?)", (item['id'], item['title'], item['expiryDate'], item['keyImages'][0]['url'], item['price']['totalPrice']['fmtPrice']['originalPrice'], item['price']['totalPrice']['fmtPrice']['discountPrice']))
 	except Exception as e:
+		print(e)
 		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
 		await channel.send("Something went HORRIBLY TERRIBLY wrong with the shop offers task. Restarting in 30 minutes.")
 		await asyncio.sleep(1800)
@@ -735,6 +742,6 @@ async def on_member_update(before, after):
 async def on_presence_update(before, after):
 	if after.activity and after.activity.name == "Fortnite" and after.id == int(os.getenv('LUCI')):
 		channel = discordClient.get_channel(int(os.getenv('CRINGE_ZONE')))
-		await channel.send("GUYS LUCI IS PLAYING FORTNITE. SHE'S NOT ALLOWED TO PLAY FORTNITE UNTIL: <t:1683075600:R>. LAUGH AT HER!!!!!")
+		await channel.send("GUYS LUCI IS PLAYING FORTNITE. SHE'S ALLOWED TO PLAY FORTNITE <t:1683075600:R>. EVERYONE POINT AND LAUGH RN")
 
 discordClient.run(os.getenv('TOKEN'))
