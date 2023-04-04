@@ -166,7 +166,10 @@ async def fortnite_shop_offers():
 		if len(offer_diff) > 0:
 			print(offer_diff)
 			channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-			await channel.send(f"There are {len(offer_diff)} new offers in the shop")
+			if len(offer_diff) == 1:
+				await channel.send("There is 1 new offer in the shop")
+			else:
+				await channel.send(f"There are {len(offer_diff)} new offers in the shop")
 			for item in offer_diff:
 				if item['expiryDate']:
 					date_time_obj = dt.strptime(item['expiryDate'], '%Y-%m-%dT%H:%M:%S.%fZ')
@@ -174,10 +177,10 @@ async def fortnite_shop_offers():
 					timestamp = f"<t:{int(time.mktime(struct_time))}:R>"
 				else:
 					timestamp = "<t:2147483647:R>"
-				og_price = float(item['price']['totalPrice']['fmtPrice']['originalPrice'][2:])
-				discount_price = float(item['price']['totalPrice']['fmtPrice']['discountPrice'][2:])
+				og_price = item['price']['totalPrice']['fmtPrice']['originalPrice'][2:]
+				discount_price = item['price']['totalPrice']['fmtPrice']['discountPrice'][2:]
 				if og_price and discount_price:
-					difference = og_price - discount_price
+					difference = float(og_price) - float(discount_price)
 					if difference != 0:
 						await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']} (${difference} off!)\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
 					else:
@@ -273,7 +276,8 @@ async def stop_task(ctx, task_name):
 		try:
 			task = tasks_list.get(task_name)
 			if task:
-				await ctx.respond(f"{task} will stop when current loop is complete ✅")
+				task.cancel()
+				await ctx.respond(f"{task} stopped ✅")
 			else:
 				await ctx.respond(f"{task_name} not found.")
 		except Exception as e:
@@ -284,8 +288,11 @@ async def reboot(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")
 	else:
-		await ctx.respond("Rebooting...")
-		os.execl(sys.executable, sys.executable, *sys.argv)
+		try:
+			await ctx.respond("✅")
+			os.execl(sys.executable, sys.executable, *sys.argv)
+		except Exception as e:
+			await ctx.respond(e)
 
 @discordClient.slash_command(description="[Owner] Add friend")
 async def add_friend(ctx, user_id):
@@ -310,7 +317,9 @@ async def get_username(ctx, id):
 
 @discordClient.slash_command(description="Return when a user was last online")
 async def get_last_online(ctx, username):
+	await ctx.defer()
 	id = getAccountID(username)
+	await asyncio.sleep(3)
 	e = get_user_presence(id)
 	if e:
 		await ctx.respond(f"{username} was last online at {e}")
