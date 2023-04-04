@@ -588,6 +588,7 @@ def get_time_message(message_hour:int, message_min:int, created_hour:int):
 @discordClient.event
 async def on_message(message):
 	message.content = message.content.lower()
+	original_content = message.content
 	if message.author == discordClient.user:
 		return
 	bl = [row[0] for row in cursor.execute("SELECT hex FROM blacklist").fetchall()]
@@ -600,6 +601,7 @@ async def on_message(message):
 		if len(char) > 2 and len(char) < 8 and (char not in wl) and (message.author.id == os.getenv('ANDY')): #lol
 			ch = discordClient.get_channel(int(os.getenv('TEST_CHANNEL')))
 			await ch.send("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
+			await message.channel.send(character + " is not allowed 🖕")
 			await message.delete()
 			return
 
@@ -658,6 +660,8 @@ async def on_message(message):
 	message.content = re.sub(r'[^0-9a-zA-Z]+', '', message.content)
 	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
 	if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', message.content):
+		replacement = re.sub(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', "REDACTED", original_content)
+		await message.channel.send(replacement)
 		await message.delete()
 		return
 	
