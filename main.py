@@ -26,6 +26,7 @@ from gcloud import *
 from third_party_api import *
 from key_handling import *
 from epic_api import *
+from coles import *
 
 intents = discord.Intents.all()
 intents.members = True
@@ -46,11 +47,13 @@ async def on_ready():
 	fortnite_status_bg.start()
 	fortnite_shop_update_v2.start()
 	fortnite_shop_offers.start()
+	coles_specials_bg.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
 	tasks_list["shop"] = fortnite_shop_update_v2
 	tasks_list["offers"] = fortnite_shop_offers
+	tasks_list["coles"] = coles_specials_bg
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
@@ -91,6 +94,25 @@ async def tv_show_update_bg():
 		print("Something went wrong getting the TV show RSS: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
 		await asyncio.sleep(60)
 		tv_show_update_bg.restart()
+		
+@tasks.loop(minutes=180)
+async def coles_specials_bg():
+	try:
+		user = discordClient.get_user(int(os.getenv('ME')))
+		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
+		for product in items:
+			special_status = get_item_by_id(product[0])[5]
+			if product[5] != special_status:
+				if special_status:
+					cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status, product[0]))
+					await user.send(f"{product[2]} {product[1]} is on sale for ${product[4]}!")
+				else:
+					cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status, product[0]))
+					await user.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${product[4]}")
+	except Exception as e:
+		print("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
+		await asyncio.sleep(60)
+		coles_specials_bg.restart()
 
 @tasks.loop(minutes=1)
 async def fortnite_status_bg():
@@ -116,19 +138,24 @@ async def fortnite_shop_update_v2():
 		r = fortnite_shop()
 		uid = cursor.execute("SELECT uid FROM shop").fetchone()[0]
 		new_uid = r['lastUpdate']['uid']
+		no_images = []
 		if new_uid != uid:
 			today = [(item['displayAssets'][0]['full_background'], item['displayName']) for item in r['shop']]
 			yesterday = cursor.execute("SELECT * FROM shop_content").fetchall()
 			diff = [tup for tup in today if tup[1] not in (y[1] for y in yesterday)]
 			if len(diff) < 1:
+				print("The shop was just updated, but there are no new items.")
 				diff2 = [tup for tup in yesterday if tup[1] not in (t[1] for t in today)] #check if something was deleted from the list
 				for item in diff2:
 					await channel.send(f"{item[1]} was just deleted from the shop.")
 				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 				return
 			for item in diff:
-				newuuid = str(uuid.uuid4())
-				urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
+				if item[0]:
+					newuuid = str(uuid.uuid4())
+					urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
+				else:
+					no_images.append(item[1])
 			print("Finished downloading shop images")
 			if len(diff) == 1:
 				await channel.send("1 item was just added to the shop.")
@@ -144,7 +171,11 @@ async def fortnite_shop_update_v2():
 			files = glob.glob('temp_images/*.png')
 			for f in files:
 				await channel.send(file=discord.File(f))
-				os.remove(f)			
+				os.remove(f)
+			if no_images:
+				await channel.send("The following items did not have associated images:")
+				for item in no_images:
+					await channel.send(item)
 			await channel.send("---")
 			cursor.execute("DELETE FROM shop_content")
 			cursor.executemany("INSERT INTO shop_content VALUES (?, ?)", [(item[0], item[1]) for item in today])
@@ -200,73 +231,12 @@ async def fortnite_shop_offers():
 		await asyncio.sleep(1800)
 		fortnite_shop_offers.restart()
 
-#@discordClient.slash_command(descrption="Get the store")
-# async def store(ctx):
-# 	date = dt.utcnow().date()
-# 	body = {
-#     "query":"query searchStoreQuery($allowCountries: String, $category: String, $count: Int, $country: String!, $keywords: String, $locale: String, $namespace: String, $itemNs: String, $sortBy: String, $sortDir: String, $start: Int, $tag: String, $releaseDate: String, $withPrice: Boolean = false, $withPromotions: Boolean = false, $priceRange: String, $freeGame: Boolean, $onSale: Boolean, $effectiveDate: String) {\n  Catalog {\n    searchStore(\n      allowCountries: $allowCountries\n      category: $category\n      count: $count\n      country: $country\n      keywords: $keywords\n      locale: $locale\n      namespace: $namespace\n      itemNs: $itemNs\n      sortBy: $sortBy\n      sortDir: $sortDir\n      releaseDate: $releaseDate\n      start: $start\n      tag: $tag\n      priceRange: $priceRange\n      freeGame: $freeGame\n      onSale: $onSale\n      effectiveDate: $effectiveDate\n    ) {\n      elements {\n       id\n        namespace\n      title\n      title4Sort\n                description\n       creationDate\n        viewableDate\n        releaseDate\n        pcReleaseDate\n        effectiveDate\n        expiryDate\n        lastModifiedDate\n        keyImages {\n          type\n          url\n          size\n          width\n          height\n          uploadedDate\n       }\n        seller {\n          id\n          name\n        }\n        productSlug\n          urlSlug\n        url\n        tags {\n          id\n        }\n        items {\n          id\n          namespace\n        }\n        customAttributes {\n          key\n          value\n        }\n        categories {\n          path\n        }\n        catalogNs {\n          mappings(pageType: \"productHome\") {\n            pageSlug\n            pageType\n          }\n        }\n        offerMappings {\n          pageSlug\n          pageType\n        }\n        developerDisplayName\n        publisherDisplayName\n        currentPrice\n        basePrice\n        price(country: $country) @include(if: $withPrice) {\n          totalPrice {\n            discountPrice\n            originalPrice\n            voucherDiscount\n            discount\n            currencyCode\n            currencyInfo {\n              decimals\n            }\n            fmtPrice(locale: $locale) {\n              originalPrice\n              discountPrice\n              intermediatePrice\n            }\n          }\n          lineOffers {\n            appliedRules {\n              id\n              endDate\n              discountSetting {\n                discountType\n              }\n            }\n          }\n        }\n        promotions(category: $category) @include(if: $withPromotions) {\n          promotionalOffers {\n            promotionalOffers {\n              startDate\n              endDate\n              discountSetting {\n                discountType\n                discountPercentage\n              }\n            }\n          }\n          upcomingPromotionalOffers {\n            promotionalOffers {\n              startDate\n              endDate\n              discountSetting {\n                discountType\n                discountPercentage\n              }\n            }\n          }\n        }\n      }\n      paging {\n        count\n        total\n      }\n    }\n  }\n}\n",
-#    "variables":{
-#       "category":"digitalextras/book|addons|digitalextras/soundtrack|digitalextras/video",
-#       "count": 100,
-#       "country":"AU",
-#       "keywords":"",
-#       "locale":"en",
-#       "namespace":"fn",
-#       "sortBy":"releaseDate",
-#       "sortDir":"DESC",
-#       "allowCountries":"AU",
-#       "start":0,
-#       "tag":"",
-#       "releaseDate":f"[,{date}]",
-#       "withPrice":True
-#    }
-# }
-# 	r = requests.post("https://www.epicgames.com/graphql?operationName=searchStoreQuery", json=body)
-# 	r = r.json()
-# 	r = r['data']['Catalog']['searchStore']['elements']
-# 	for item in r:
-# 		cursor.execute("INSERT INTO shop_offers VALUES (?, ?, ?, ?, ?, ?)", (item['id'], item['title'], item['expiryDate'], item['keyImages'][0]['url'], item['price']['totalPrice']['fmtPrice']['originalPrice'], item['price']['totalPrice']['fmtPrice']['discountPrice']))
-# 	result = cursor.execute("SELECT * FROM shop_offers").fetchall()
-# 	print(result)
-
-#@discordClient.slash_command()
-async def fekajsd(ctx):
-	items = cursor.execute("SELECT * FROM shop_offers").fetchall()
-	print(items)
-	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-	await channel.send(f"There are {len(items)} new offers in the shop")
-	for item in items:
-		if item[2]:
-			date_time_obj = dt.strptime(item[2], '%Y-%m-%dT%H:%M:%S.%fZ')
-			struct_time = date_time_obj.timetuple()
-			timestamp = f"<t:{int(time.mktime(struct_time))}:R>"
-		else:
-			timestamp = "<t:2147483647:R>"
-		# date_time_obj = dt.strptime(item[2], '%Y-%m-%dT%H:%M:%S.%fZ')
-		# timestamp = f"<t:{time.mktime(date_time_obj)}:R>"
-		og_price = float(item[4][2:])
-		discount_price = float(item[5][2:])
-		difference = og_price - discount_price
-		if difference != 0:
-			await channel.send(f"{item[1]}\n{item[5]} (${difference} off!)\nExpires {timestamp}\n{item[3]}")
-		else:
-			await channel.send(f"{item[1]}\n{item[5]}\nExpires {timestamp}\n{item[3]}")
-
-#@discordClient.slash_command(description="Get the store v2")
-async def storev2(ctx):
-	r = get_fortnite_shop1()
-	r = r['storefronts'][28]['catalogEntries']
-	with open('result1.json', 'w') as fp:
-		json.dump(r, fp)
-	ids = []
-	for thing in r:
-		ids.append(thing['appStoreId'][1])
-	#print(ids)
-		
-	result = get_fortnite_shop_item_details(ids[0])
-	print(result)
-	with open('result2.json', 'w') as fp:
-		json.dump(result, fp)
+@discordClient.slash_command(description="[Owner] Track an item from Coles")
+async def add_coles_item(ctx, id):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+	else:
+		await ctx.respond(add_item_to_db_by_id(id))
 
 @discordClient.slash_command(description="[Owner] Stop an internal task")
 async def stop_task(ctx, task_name):
@@ -601,7 +571,7 @@ async def on_message(message):
 		if len(char) > 2 and len(char) < 8 and (char not in wl) and (message.author.id == os.getenv('ANDY')): #lol
 			ch = discordClient.get_channel(int(os.getenv('TEST_CHANNEL')))
 			await ch.send("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
-			await message.channel.send(character + " is not allowed 🖕")
+			await message.channel.send(character + " is not allowed")
 			await message.delete()
 			return
 
@@ -804,11 +774,5 @@ async def on_member_update(before, after):
         return
     if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', after.nick):
         await after.edit(nick='loser')
-	
-@discordClient.event
-async def on_presence_update(before, after):
-	if after.activity and after.activity.name == "Fortnite" and after.id == int(os.getenv('LUCI')):
-		channel = discordClient.get_channel(int(os.getenv('CRINGE_ZONE')))
-		await channel.send("GUYS LUCI IS PLAYING FORTNITE. SHE'S ALLOWED TO PLAY FORTNITE <t:1683075600:R>. EVERYONE POINT AND LAUGH RN")
 
 discordClient.run(os.getenv('TOKEN'))
