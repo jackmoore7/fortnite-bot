@@ -102,6 +102,8 @@ async def coles_specials_bg():
 		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
 		for product in items:
 			special_status = get_item_by_id(product[0])[5]
+			if special_status == "nah":
+				await user.send(f"{product[2]} {product[1]} returned a 404. It may no longer be available.")
 			if product[5] != special_status:
 				if special_status:
 					cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status, product[0]))
@@ -110,8 +112,8 @@ async def coles_specials_bg():
 					cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status, product[0]))
 					await user.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${product[4]}")
 	except Exception as e:
-		print("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
-		await asyncio.sleep(60)
+		await user.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
+		await asyncio.sleep(10800)
 		coles_specials_bg.restart()
 
 @tasks.loop(minutes=1)
