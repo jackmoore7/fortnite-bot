@@ -240,6 +240,22 @@ async def add_coles_item(ctx, id):
 	else:
 		await ctx.respond(add_item_to_db_by_id(id))
 
+@discordClient.slash_command(description="Search a Coles item by name")
+async def search_coles_item(ctx, name):
+	await ctx.defer()
+	try:
+		result = search_item(name)
+		if result[0] == 0:
+			await ctx.respond("No results")
+			return
+		list_str = "```" + "\n".join([f"{i}. {item[1]} ({item[2]}) - ID: {item[0]}" for i, item in enumerate(result[1:], start=1)]) + "```"
+		response = f"{list_str}"
+		await ctx.respond(response)
+	except discord.errors.HTTPException as e:
+		if "Must be 2000 or fewer in length." in str(e):
+			await ctx.respond(f"Your search returned {result[0]} results. Please make your search term more specific.")
+
+
 @discordClient.slash_command(description="[Owner] Stop an internal task")
 async def stop_task(ctx, task_name):
 	if ctx.user.id != int(os.getenv('ME')):

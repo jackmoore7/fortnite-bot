@@ -2,18 +2,10 @@ import requests
 import sqlite3 as sl
 from bs4 import BeautifulSoup
 import json
+import urllib.parse
 
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
-
-def get_build_version():
-    url = "https://www.coles.com.au/_next"
-    r = requests.get(url)
-    soup = BeautifulSoup(r.content, 'html.parser')
-    script = soup.find("script", id="__NEXT_DATA__")
-    if script:
-        json_data = json.loads(script.string)
-    return json_data['buildId']
     
 def get_item_by_id(id):
     build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
@@ -49,6 +41,19 @@ def get_item_by_id(id):
             on_sale = False
 
         return (id, name, brand, description, current_price, on_sale)
+    
+def search_item(query):
+    query = urllib.parse.quote(query)
+    build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
+    url = "https://www.coles.com.au/_next/data/"
+    r = requests.get(url + build_version + "/en/search.json?q=" + query)
+    r = r.json()
+    results = r['pageProps']['searchResults']['results']
+    results_amount = r['pageProps']['searchResults']['noOfResults']
+    results_list = [(product['id'], product['name'], product['brand']) for product in results if ('adId' not in product or not product['adId']) and 'id' in product]
+    results_list.insert(0, results_amount)
+    return results_list
+
 
 def add_item_to_db_by_id(id):
     product = get_item_by_id(id)
