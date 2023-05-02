@@ -101,16 +101,22 @@ async def coles_specials_bg():
 		user = discordClient.get_user(int(os.getenv('ME')))
 		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
 		for product in items:
-			special_status = get_item_by_id(product[0])[5]
-			if special_status == "nah":
-				await user.send(f"{product[2]} {product[1]} returned a 404. It may no longer be available.")
-			if product[5] != special_status:
-				if special_status:
-					cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status, product[0]))
-					await user.send(f"{product[2]} {product[1]} is on sale for ${product[4]}!")
-				else:
-					cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status, product[0]))
-					await user.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${product[4]}")
+			special_status = get_item_by_id(product[0])
+			if isinstance(special_status, tuple):
+				if special_status[6] == False:
+					await user.send(f"{product[2]} {product[1]} is no longer avaliable for purchase and will be deleted from your tracking list.")
+					print(product[0])
+					cursor.execute("DELETE FROM coles_specials WHERE id = ?", (product[0],))
+				if product[5] != special_status[5]:
+					if special_status[5]:
+						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
+						await user.send(f"{product[2]} {product[1]} is on sale for ${product[4]}!")
+					else:
+						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
+						await user.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${product[4]}")
+			else:
+				if special_status == "nah":
+					await user.send(f"{product[2]} {product[1]} returned a 404. It may no longer be available.")
 	except Exception as e:
 		await user.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
 		await asyncio.sleep(10800)
@@ -221,7 +227,6 @@ async def fortnite_shop_offers():
 				else:
 					await channel.send(f"{item['title']}\nFree!\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
 		else:
-			print("No new shop offers")
 			return
 		cursor.execute("DELETE FROM shop_offers")
 		for item in today_offers:
@@ -684,7 +689,6 @@ async def on_message(message):
 			if not ocr:
 				print("Couldn't find Aldi text. Searching for logo instead...")
 				logos = detect_logos(myuuid)
-				print(logos)
 				for logo in logos:
 					cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
 					logo.description = logo.description.lower()
@@ -698,7 +702,6 @@ async def on_message(message):
 				if not logos:
 					print("No logos detected. Searching for labels...")
 					labels = detect_labels(myuuid)
-					print(labels)
 					for label in labels:
 						cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, label.description, label.score])
 						label.description = label.description.lower()

@@ -33,14 +33,16 @@ def get_item_by_id(id):
         name = r['pageProps']['product']['name']
         brand = r['pageProps']['product']['brand']
         description = r['pageProps']['product']['description']
-        current_price = r['pageProps']['product']['pricing']['now']
-
+        try:
+            current_price = r['pageProps']['product']['pricing']['now']
+        except TypeError:
+            current_price = None
         if r.get('pageProps') and r['pageProps'].get('product') and r['pageProps']['product'].get('pricing') and r['pageProps']['product']['pricing'].get('promotionType'):
             on_sale = True
         else:
             on_sale = False
-
-        return (id, name, brand, description, current_price, on_sale)
+        available = r['pageProps']['product']['availability']
+        return (id, name, brand, description, current_price, on_sale, available)
     
 def search_item(query):
     query = urllib.parse.quote(query)
@@ -63,9 +65,10 @@ def add_item_to_db_by_id(id):
     description = product[3]
     current_price = product[4]
     on_sale = product[5]
+    available = product[6]
     item = cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (id,)).fetchone()
     if item:
         return f"You're already tracking {brand} {name}"
     else:
-        cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?)", (id, name, brand, description, current_price, on_sale))
+        cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, brand, description, current_price, on_sale, available))
         return f"Added {brand} {name} to your list"
