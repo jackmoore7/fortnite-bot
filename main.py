@@ -110,10 +110,16 @@ async def coles_specials_bg():
 				if product[5] != special_status[5]:
 					if special_status[5]:
 						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
-						await user.send(f"{product[2]} {product[1]} is on sale for ${product[4]}!")
+						await user.send(f"{product[2]} {product[1]} is on sale for ${special_status[4]}!")
 					else:
 						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
-						await user.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${product[4]}")
+						await user.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${special_status[4]}")
+				if (product[4] != special_status[4]):
+					cursor.execute("UPDATE coles_specials SET current_price = ? WHERE id = ?", (special_status[4], product[0]))
+					if product[4] > special_status[4]:
+						await user.send(f"The price of {product[2]} {product[1]} was reduced from ${product[4]} to ${special_status[4]}")
+					else:
+						await user.send(f"The price of {product[2]} {product[1]} was increased from ${product[4]} to ${special_status[4]}")
 			else:
 				if special_status == "nah":
 					await user.send(f"{product[2]} {product[1]} returned a 404. It may no longer be available.")
@@ -154,8 +160,10 @@ async def fortnite_shop_update_v2():
 			if len(diff) < 1:
 				print("The shop was just updated, but there are no new items.")
 				diff2 = [tup for tup in yesterday if tup[1] not in (t[1] for t in today)] #check if something was deleted from the list
-				for item in diff2:
-					await channel.send(f"{item[1]} was just deleted from the shop.")
+				if len(diff2) > 0:
+					await channel.send("The following items were just deleted from the shop:")
+					for item in diff2:
+						await channel.send(f"{item[1]}")
 				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 				return
 			for item in diff:
