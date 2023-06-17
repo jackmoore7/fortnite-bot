@@ -662,7 +662,7 @@ async def on_message(message):
 
 	message.content = re.sub(r'[^0-9a-zA-Z]+', '', message.content)
 	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
-	if re.search(aldi_regex), message.content):
+	if re.search(aldi_regex, message.content):
 		replacement = re.sub(aldi_regex, "REDACTED", original_content)
 		await message.channel.send(replacement)
 		await message.delete()
