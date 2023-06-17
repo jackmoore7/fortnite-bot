@@ -38,6 +38,8 @@ cursor = con.cursor()
 
 tasks_list = {}
 
+aldi_regex = r'(?i)[a4@]\s*[il1\|]\s*d\s*[il1\|]'
+
 @discordClient.event
 async def on_ready():
 	print(f'{discordClient.user} is now online!')
@@ -660,8 +662,8 @@ async def on_message(message):
 
 	message.content = re.sub(r'[^0-9a-zA-Z]+', '', message.content)
 	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
-	if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', message.content):
-		replacement = re.sub(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', "REDACTED", original_content)
+	if re.search(aldi_regex), message.content):
+		replacement = re.sub(aldi_regex, "REDACTED", original_content)
 		await message.channel.send(replacement)
 		await message.delete()
 		return
@@ -771,7 +773,7 @@ async def on_raw_message_edit(payload):
 			await message.delete()
 			return
 
-	if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', edited_message):
+	if re.search(aldi_regex, edited_message):
 		await message.delete()
 
 @discordClient.event
@@ -801,7 +803,7 @@ async def on_reaction_add(reaction, user):
 async def on_member_update(before, after):
     if before == discordClient.user or not after.nick:
         return
-    if re.search(r'(?i)(a|4|@)\s*(l|1|i|\|)\s*d\s*(i|1|l)\s*', after.nick):
+    if re.search(aldi_regex, after.nick):
         await after.edit(nick='loser')
 
 discordClient.run(os.getenv('TOKEN'))
