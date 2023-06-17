@@ -128,7 +128,7 @@ async def coles_specials_bg():
 		await asyncio.sleep(10800)
 		coles_specials_bg.restart()
 
-@tasks.loop(minutes=1)
+@tasks.loop(minutes=3)
 async def fortnite_status_bg():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
@@ -141,8 +141,8 @@ async def fortnite_status_bg():
 			embed.add_field(name="Status", value=response)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 	except Exception as e:
-		print("Something went wrong getting the Fortnite status: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
-		await asyncio.sleep(60)
+		print("Something went wrong getting the Fortnite status: " + str(repr(e)) + "\nRestarting internal task in 3 minutes.")
+		await asyncio.sleep(180)
 		fortnite_status_bg.restart()
 
 @tasks.loop(minutes=5)
