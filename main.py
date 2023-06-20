@@ -7,7 +7,6 @@ import re
 import uuid
 import asyncio
 import feedparser
-import json
 import time
 from datetime import datetime as dt
 from discord.ext import tasks
@@ -664,7 +663,8 @@ async def on_message(message):
 	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
 	if re.search(aldi_regex, message.content):
 		replacement = re.sub(aldi_regex, "REDACTED", original_content)
-		await message.channel.send(replacement)
+		webhook = (await message.channel.webhooks())[0]
+		await webhook.send(content=replacement, username=message.author.global_name, avatar_url=message.author.avatar)
 		await message.delete()
 		return
 	
