@@ -104,10 +104,9 @@ async def coles_specials_bg():
 		for product in items:
 			special_status = get_item_by_id(product[0])
 			if isinstance(special_status, tuple):
-				if special_status[6] == False:
-					await user.send(f"{product[2]} {product[1]} is no longer avaliable for purchase and will be deleted from your tracking list.")
-					print(product[0])
-					cursor.execute("DELETE FROM coles_specials WHERE id = ?", (product[0],))
+				if product[6] != special_status[6]:
+					await user.send(f"{product[2]} {product[1]} is no longer available for purchase.")
+					cursor.execute("UPDATE coles_specials SET available = ? WHERE id = ?", (special_status[6], product[0]))
 				if product[5] != special_status[5]:
 					if special_status[5]:
 						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
@@ -268,6 +267,35 @@ async def search_coles_item(ctx, name):
 	except discord.errors.HTTPException as e:
 		if "Must be 2000 or fewer in length." in str(e):
 			await ctx.respond(f"Your search returned {result[0]} results. Please make your search term more specific.")
+
+@discordClient.slash_command(description="[Owner] View a list of items you're tracking")
+async def coles_item_list(ctx):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+	else:
+		try:
+			tracked = cursor.execute("SELECT * FROM coles_specials")
+			embed = discord.Embed(title = "Items you're tracking")
+			for item in tracked:
+				id = item[0]
+				name = item[1]
+				brand = item[2]
+				description = item[3]
+				current_price = item[4]
+				on_sale = item[5]
+				available = item[6]
+				embed.add_field(name="ID", value=id, inline=False)
+				embed.add_field(name="Name", value=name, inline=False)
+				embed.add_field(name="Brand", value=brand, inline=False)
+				embed.add_field(name="Description", value=description, inline=False)
+				embed.add_field(name="Price", value=current_price, inline=False)
+				embed.add_field(name="On special", value="Yes" if on_sale else "No", inline=False)
+				embed.add_field(name="Availability", value="Available" if available else "Unavailable", inline=False)
+				embed.add_field(name="\u200b", value="\u200b", inline=False)
+				embed.add_field(name="\u200b", value="\u200b", inline=False)
+			await ctx.respond(embed=embed)
+		except Exception as e:
+			await ctx.respond("Couldn't get list")
 
 
 @discordClient.slash_command(description="[Owner] Stop an internal task")
@@ -664,7 +692,7 @@ async def on_message(message):
 	if re.search(aldi_regex, message.content):
 		replacement = re.sub(aldi_regex, "REDACTED", original_content)
 		webhook = (await message.channel.webhooks())[0]
-		await webhook.send(content=replacement, username=message.author.global_name, avatar_url=message.author.avatar)
+		await webhook.send(content=replacement, username=message.author.name, avatar_url=message.author.avatar)
 		await message.delete()
 		return
 	
