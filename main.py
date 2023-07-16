@@ -105,7 +105,10 @@ async def coles_specials_bg():
 			special_status = get_item_by_id(product[0])
 			if isinstance(special_status, tuple):
 				if product[6] != special_status[6]:
-					await user.send(f"{product[2]} {product[1]} is no longer available for purchase.")
+					if special_status[6]:
+						await user.send(f"{product[2]} {product[1]} is now available for purchase.")
+					else:
+						await user.send(f"{product[2]} {product[1]} is no longer available for purchase.")
 					cursor.execute("UPDATE coles_specials SET available = ? WHERE id = ?", (special_status[6], product[0]))
 				if product[5] != special_status[5]:
 					if special_status[5]:
