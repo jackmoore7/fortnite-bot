@@ -59,16 +59,19 @@ def search_item(query):
 
 def add_item_to_db_by_id(id):
     product = get_item_by_id(id)
-    id = product[0]
-    name = product[1]
-    brand = product[2]
-    description = product[3]
-    current_price = product[4]
-    on_sale = product[5]
-    available = product[6]
-    item = cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (id,)).fetchone()
+    if product:
+        id = product[0]
+        name = product[1]
+        brand = product[2]
+        description = product[3]
+        current_price = product[4]
+        on_sale = product[5]
+        available = product[6]
+        item = cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (id,)).fetchone()
+    else:
+        return "Couldn't find a product with that ID"
     if item:
-        return f"You're already tracking {brand} {name}"
+        return f"You're already tracking {brand} {name}. Would you like to remove it from your list?"
     else:
         cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, brand, description, current_price, on_sale, available))
         return f"Added {brand} {name} to your list"

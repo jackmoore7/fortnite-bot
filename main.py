@@ -10,6 +10,8 @@ import feedparser
 import time
 from datetime import datetime as dt
 from discord.ext import tasks
+from discord.ext import commands, pages
+from discord.ext.pages import Paginator, Page
 from discord.ui import Button, View
 import sqlite3 as sl
 from dotenv import load_dotenv
@@ -249,13 +251,6 @@ async def fortnite_shop_offers():
 		await asyncio.sleep(1800)
 		fortnite_shop_offers.restart()
 
-@discordClient.slash_command(description="[Owner] Track an item from Coles")
-async def add_coles_item(ctx, id):
-	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
-	else:
-		await ctx.respond(add_item_to_db_by_id(id))
-
 @discordClient.slash_command(description="Search a Coles item by name")
 async def search_coles_item(ctx, name):
 	await ctx.defer()
@@ -271,8 +266,43 @@ async def search_coles_item(ctx, name):
 		if "Must be 2000 or fewer in length." in str(e):
 			await ctx.respond(f"Your search returned {result[0]} results. Please make your search term more specific.")
 
-@discordClient.slash_command(description="[Owner] View a list of items you're tracking")
-async def coles_item_list(ctx):
+coles_list = discordClient.create_group("coles_list", "Edit your tracked items list")
+
+class MyView(discord.ui.View):
+
+	def __init__(self, item_id):
+		super().__init__()
+		self.item_id = item_id
+
+	@discord.ui.button(label="Yes, delete", row=0, style=discord.ButtonStyle.danger)
+	async def first_button_callback(self, button, interaction):
+		self.disable_all_items()
+		try:
+			cursor.execute("DELETE FROM coles_specials WHERE id = ?", (self.item_id,))
+			button.label = "Item deleted"
+		except Exception as e:
+			button.label = f"Couldn't delete item: {e}"
+		await interaction.response.edit_message(view=self)
+
+	@discord.ui.button(label="No, keep", row=0, style=discord.ButtonStyle.primary)
+	async def second_button_callback(self, button, interaction):
+		self.disable_all_items()
+		button.label = "Kept!"
+		await interaction.response.edit_message(view=self)
+
+@coles_list.command(description="Add or remove an item")
+async def edit(ctx, id):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+	else:
+		result = add_item_to_db_by_id(id)
+		if "already" in result:
+			await ctx.respond(result, view=MyView(item_id=id))
+		else:
+			await ctx.respond(result)
+
+@coles_list.command(description="View your tracked items")
+async def list(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")
 	else:
@@ -283,23 +313,14 @@ async def coles_item_list(ctx):
 				id = item[0]
 				name = item[1]
 				brand = item[2]
-				description = item[3]
 				current_price = item[4]
 				on_sale = item[5]
 				available = item[6]
-				embed.add_field(name="ID", value=id, inline=False)
-				embed.add_field(name="Name", value=name, inline=False)
-				embed.add_field(name="Brand", value=brand, inline=False)
-				embed.add_field(name="Description", value=description, inline=False)
-				embed.add_field(name="Price", value=current_price, inline=False)
-				embed.add_field(name="On special", value="Yes" if on_sale else "No", inline=False)
-				embed.add_field(name="Availability", value="Available" if available else "Unavailable", inline=False)
-				embed.add_field(name="\u200b", value="\u200b", inline=False)
-				embed.add_field(name="\u200b", value="\u200b", inline=False)
+				compact_info = f"**Brand**: {brand}\n**Price**: ${current_price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {'Available' if available else 'Unavailable'}"
+				embed.add_field(name=f"{id} - {name}", value=compact_info, inline=False)
 			await ctx.respond(embed=embed)
 		except Exception as e:
-			await ctx.respond("Couldn't get list")
-
+			await ctx.respond(f"Couldn't get list: {e}")
 
 @discordClient.slash_command(description="[Owner] Stop an internal task")
 async def stop_task(ctx, task_name):
