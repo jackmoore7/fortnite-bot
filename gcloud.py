@@ -1,5 +1,7 @@
 from google.cloud import vision, language_v1, videointelligence
 import io
+import requests
+import os
 
 def classify_text(text):
     """
@@ -171,3 +173,12 @@ def detect_labels_uri(uri):
                 response.error.message))
     
     return labels
+
+def get_elevation(lat, long):
+    key = os.getenv('GCLOUD_MAPS_API_KEY')
+    url = f"https://maps.googleapis.com/maps/api/elevation/json?locations={lat}%2C{long}&key={key}"
+    payload={}
+    headers = {}
+    response = requests.request("GET", url, headers=headers, data=payload)
+    response = response.json()
+    return response['results'][0]['elevation']

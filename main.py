@@ -7,8 +7,8 @@ import re
 import uuid
 import asyncio
 import feedparser
-import time
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta
+from datetime import time
 from discord.ext import tasks
 from discord.ext import commands, pages
 from discord.ext.pages import Paginator, Page
@@ -18,6 +18,8 @@ from dotenv import load_dotenv
 import glob
 import urllib.request
 from num2words import num2words
+import imghdr
+import pytz
 
 load_dotenv()
 
@@ -51,12 +53,14 @@ async def on_ready():
 	fortnite_shop_update_v2.start()
 	fortnite_shop_offers.start()
 	coles_specials_bg.start()
+	arpansa.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
 	tasks_list["shop"] = fortnite_shop_update_v2
 	tasks_list["offers"] = fortnite_shop_offers
 	tasks_list["coles"] = coles_specials_bg
+	tasks_list["arpansa"] = arpansa
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
@@ -174,7 +178,15 @@ async def fortnite_shop_update_v2():
 			for item in diff:
 				if item[0]:
 					newuuid = str(uuid.uuid4())
-					urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
+					#urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
+					img = urllib.request.urlopen(item[0])
+					img_data = img.read()
+					img_type = imghdr.what(None, h=img_data)
+					if img_type:
+						with open(f'temp_images/{newuuid}.{img_type}', "wb") as f:
+							f.write(img_data)
+					else:
+						no_images.append(item[1])
 				else:
 					no_images.append(item[1])
 			print("Finished downloading shop images")
@@ -250,6 +262,36 @@ async def fortnite_shop_offers():
 		await channel.send("Something went HORRIBLY TERRIBLY wrong with the shop offers task. Restarting in 30 minutes.")
 		await asyncio.sleep(1800)
 		fortnite_shop_offers.restart()
+
+start_time = time(22, 0, 0)
+end_time = time(8, 0, 0)
+#time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minute in range(0, 60, 15)] + [time(hour, minute) for hour in range(end_time.hour + 1) for minute in range(0, 60, 15)]
+
+@tasks.loop(minutes=1)
+async def arpansa():
+	safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
+	ch = discordClient.get_channel(int(os.getenv('UV_CHANNEL')))
+	role = os.getenv('SUNSCREEN_ROLE')
+	sydney_time = dt.now(pytz.timezone('Australia/Sydney'))
+	date = sydney_time.strftime('%Y-%m-%d')
+	url = os.getenv('ARPANSA_URL')
+	r = requests.get(f"{url}&date={date}")
+	current_uv = r.json()['CurrentUVIndex']
+	r = r.json()['GraphData']
+	first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
+	if first_forecast_gte_3_item and safe:
+		first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
+		max_uv_today = max(r, key=lambda item: item['Forecast'])['Forecast']
+		max_uv_today_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
+		await ch.send(f"<@&{role}> Sun protection is estimated to be needed between {first_forecast_gte_3_item['Date'][-5:]} and {first_forecast_lt_3_item['Date'][-5:]} today.")
+		await ch.send(f"Maximum UV for today is expected to be {max_uv_today} at {max_uv_today_time}")
+		cursor.execute("UPDATE uv_times SET safe = 0")
+	if first_forecast_gte_3_item is None and not safe and current_uv < 3:
+		await ch.send("No sun protection is needed today.")
+		cursor.execute("UPDATE uv_times SET safe = 1")
+	if safe and current_uv >= 3:
+		await ch.send(f"<@&{role}> Earlier forecast was incorrect. UV index is now above safe levels ({current_uv}). slip slop slap bitch")
+		cursor.execute("UPDATE uv_times SET safe = 0")
 
 @discordClient.slash_command(description="Search a Coles item by name")
 async def search_coles_item(ctx, name):
@@ -398,7 +440,16 @@ async def pingme(ctx):
 	else:
 		cursor.execute("INSERT INTO pingme VALUES (?)", (user_id,))
 		await ctx.respond("Added ✅")
-	
+
+@discordClient.slash_command(description="Get pinged for sun protection forecasts")
+async def sunscreen(ctx):
+	role = ctx.guild.get_role(int(os.getenv('SUNSCREEN_ROLE')))
+	if role in ctx.user.roles:
+		await ctx.user.remove_roles(role)
+		await ctx.respond("Removed ✅")
+	else:
+		await ctx.user.add_roles(role)
+		await ctx.respond("Added ✅")
 
 notifyme = discordClient.create_group("notifyme", "Get notified when an item you want is in the shop")
 
@@ -609,6 +660,26 @@ async def hexify(ctx, string):
 	hex_string = "".join([character.encode("utf-8").hex() for character in string])
 	await ctx.respond(hex_string, ephemeral=True)
 
+@discordClient.slash_command()
+async def delete_message_by_id(ctx, id):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+		return
+	try:
+		channel = ctx.channel
+		message = await channel.fetch_message(id)
+		await message.delete()
+	except discord.NotFound:
+		print("Message not found.")
+	except discord.Forbidden:
+		print("Bot doesn't have permission to delete messages.")
+	except discord.HTTPException:
+		print("An error occurred while trying to delete the message.")
+
+@discordClient.slash_command()
+async def elevation(ctx, lat, long):
+	await ctx.respond(get_elevation(lat, long))
+
 def time_to_text(hour:int, minute:int):
 	if minute == 0:
 		return num2words(hour) + " o'clock"
@@ -659,11 +730,11 @@ async def on_message(message):
 			await message.delete()
 			return
 
-	time = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
-	if time:
-		time = time.group()
-		time = time.split(":")
-		to_send = get_time_message(int(time[0]), int(time[1]), message.created_at.hour) + "\n"
+	time1 = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
+	if time1:
+		time1 = time1.group()
+		time1 = time1.split(":")
+		to_send = get_time_message(int(time1[0]), int(time1[1]), message.created_at.hour) + "\n"
 		await message.channel.send(to_send)
 
 	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)

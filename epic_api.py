@@ -1,6 +1,6 @@
 import requests
 import sqlite3 as sl
-import time
+from time import sleep
 import os
 from datetime import datetime as dt
 
@@ -17,7 +17,7 @@ def get_fortnite_status(): #need to use the fortnite client token
         x = dt.now().isoformat()
         print("New Fortnite client token needed at " + str(x))
         get_account_key_fortnitePCGameClient()
-        time.sleep(2)
+        sleep(2)
         return get_fortnite_status()
     r = r.json()
     try:
@@ -27,7 +27,7 @@ def get_fortnite_status(): #need to use the fortnite client token
             return r['errorCode']
     except:
         print("Failed to get Fortnite status. Trying again in 1 minute.")
-        time.sleep(60)
+        sleep(60)
         return get_fortnite_status()
 
 def get_fortnite_update_manifest(): #need to use the launcher client token
@@ -38,7 +38,7 @@ def get_fortnite_update_manifest(): #need to use the launcher client token
         x = dt.now().isoformat()
         print("New launcher token needed at " + str(x))
         get_account_key_launcherAppClient2()
-        time.sleep(2)
+        sleep(2)
         return get_fortnite_update_manifest()
     r = r.json()
     try:
@@ -48,7 +48,7 @@ def get_fortnite_update_manifest(): #need to use the launcher client token
             return r['errorCode']
     except:
         print("Failed to get launcher manifest. Trying again in 1 minute.")
-        time.sleep(60)
+        sleep(60)
         return get_fortnite_update_manifest()
 
 def get_fortnite_shop_offers():
@@ -78,7 +78,7 @@ def get_fortnite_shop_offers():
         return r
     except:
         print("Failed to get Fortnite shop offers. Trying again in 1 minute.")
-        time.sleep(60)
+        sleep(60)
         return get_fortnite_shop_offers()
 
 def get_fortnite_shop1():
@@ -89,7 +89,7 @@ def get_fortnite_shop1():
         x = dt.now().isoformat()
         print("New device auth token needed at " + str(x))
         get_device_auth_2()
-        time.sleep(2)
+        sleep(2)
         return get_fortnite_shop1()
     return r.json()
 
@@ -106,7 +106,7 @@ def get_fortnite_shop_item_details(id):
         x = dt.now().isoformat()
         print("New device auth token needed at " + str(x))
         get_device_auth_2()
-        time.sleep(2)
+        sleep(2)
         return get_fortnite_shop_item_details(id)
     return r.json()
 
@@ -119,7 +119,7 @@ def add_friend(user_id):
         x = dt.now().isoformat()
         print("New device auth token needed at " + str(x))
         get_device_auth_2()
-        time.sleep(2)
+        sleep(2)
         return add_friend(user_id)
     return r.json()
 
@@ -135,7 +135,7 @@ def get_all_friends(include_pending: bool = False):
         x = dt.now().isoformat()
         print("New device auth token needed at " + str(x))
         get_device_auth_2()
-        time.sleep(2)
+        sleep(2)
         return get_all_friends()
     return r.json()
 
@@ -147,7 +147,7 @@ def get_user_by_id(user_id):
         x = dt.now().isoformat()
         print("New device auth token needed at " + str(x))
         get_device_auth_2()
-        time.sleep(2)
+        sleep(2)
         return get_user_by_id(user_id)
     return r.json()
 
@@ -160,7 +160,7 @@ def get_user_presence(user_id):
         x = dt.now().isoformat()
         print("New device auth token needed at " + str(x))
         get_device_auth_2()
-        time.sleep(2)
+        sleep(2)
         return get_user_presence()
     try:
         if r.json()[user_id]:
