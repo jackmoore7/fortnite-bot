@@ -19,7 +19,7 @@ import glob
 import urllib.request
 from num2words import num2words
 import imghdr
-import pytz
+
 
 load_dotenv()
 
@@ -30,6 +30,7 @@ from third_party_api import *
 from key_handling import *
 from epic_api import *
 from coles import *
+from uv import *
 
 intents = discord.Intents.all()
 intents.members = True
@@ -263,34 +264,50 @@ async def fortnite_shop_offers():
 		await asyncio.sleep(1800)
 		fortnite_shop_offers.restart()
 
-start_time = time(22, 0, 0)
-end_time = time(8, 0, 0)
-#time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minute in range(0, 60, 15)] + [time(hour, minute) for hour in range(end_time.hour + 1) for minute in range(0, 60, 15)]
+start_time = time(20, 1, 0)
+end_time = time(7, 0, 0)
+time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minute in range(0, 60, 1)] + [time(hour, minute) for hour in range(end_time.hour + 1) for minute in range(0, 60, 1)]
 
-@tasks.loop(minutes=1)
+@tasks.loop(time=time_list)
 async def arpansa():
-	safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
 	ch = discordClient.get_channel(int(os.getenv('UV_CHANNEL')))
 	role = os.getenv('SUNSCREEN_ROLE')
-	sydney_time = dt.now(pytz.timezone('Australia/Sydney'))
-	date = sydney_time.strftime('%Y-%m-%d')
-	url = os.getenv('ARPANSA_URL')
-	r = requests.get(f"{url}&date={date}")
-	current_uv = r.json()['CurrentUVIndex']
-	r = r.json()['GraphData']
-	first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
-	if first_forecast_gte_3_item and safe:
-		first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
+	current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
+	db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
+	data = get_arpansa_data()
+	current_uv = float(data['CurrentUVIndex'])
+	r = data['GraphData']
+
+	if db_date != current_date:
+		print("It's a new day!")
+		first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
 		max_uv_today = max(r, key=lambda item: item['Forecast'])['Forecast']
 		max_uv_today_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
-		await ch.send(f"<@&{role}> Sun protection is estimated to be needed between {first_forecast_gte_3_item['Date'][-5:]} and {first_forecast_lt_3_item['Date'][-5:]} today.")
-		await ch.send(f"Maximum UV for today is expected to be {max_uv_today} at {max_uv_today_time}")
-		cursor.execute("UPDATE uv_times SET safe = 0")
-	if first_forecast_gte_3_item is None and not safe and current_uv < 3:
-		await ch.send("No sun protection is needed today.")
-		cursor.execute("UPDATE uv_times SET safe = 1")
+		embed = discord.Embed(color=0xa3c80a)
+		if first_forecast_gte_3_item:
+			first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
+			embed.title = "Sun protection required today"
+			await ch.send(f"<@&{role}")
+			embed.add_field(name="Times", value=f"Between {first_forecast_gte_3_item['Date'][-5:]} and {first_forecast_lt_3_item['Date'][-5:]}")
+			cursor.execute("UPDATE uv_times SET safe = 0")
+		else:
+			embed.title = "No sun protection required today"
+			cursor.execute("UPDATE uv_times SET safe = 1")
+		embed.add_field(name="Today's maximum", value=f"{max_uv_today} at {max_uv_today_time}")
+		embed.add_field(name="Current UV", value=f"{current_uv} {calculate_emoji(current_uv)}")
+		msg = await ch.send(embed=embed)
+		cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
+		cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
+
+	msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
+	emb = msg.embeds[0]
+	emb.set_field_at(-1, value=f"{current_uv} {calculate_emoji(current_uv)}")
+	emb.color = discord.Color(calculate_hex(current_uv))
+	await msg.edit(embed=emb)
+
+	safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
 	if safe and current_uv >= 3:
-		await ch.send(f"<@&{role}> Earlier forecast was incorrect. UV index is now above safe levels ({current_uv}). slip slop slap bitch")
+		await ch.send(f"<@&{role}> Earlier forecast was incorrect - UV index is now above safe levels. slip slop slap bitch")
 		cursor.execute("UPDATE uv_times SET safe = 0")
 
 @discordClient.slash_command(description="Search a Coles item by name")
