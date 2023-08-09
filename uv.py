@@ -11,11 +11,11 @@ def get_arpansa_data():
 
 def calculate_hex(num):
     color_mapping = {
-        0: 0xA3C80A,
-        3: 0xFFF300,
-        6: 0xF39500,
-        8: 0xE53618,
-        11: 0x9D8FBF
+        0: 0x78B159,
+        3: 0xFDCB58,
+        6: 0xF4900C,
+        8: 0xDD2E44,
+        11: 0xAA8ED6
     }
     closest_value = max(filter(lambda x: x <= float(num), color_mapping))
     return color_mapping.get(closest_value)
@@ -26,7 +26,7 @@ def calculate_emoji(num):
         3: "🟡",
         6: "🟠",
         8: "🔴",
-        11: "🟣"
+        11: "🟣💀"
     }
     closest_value = max(filter(lambda x: x <= float(num), emoji_mapping))
     return emoji_mapping.get(closest_value)

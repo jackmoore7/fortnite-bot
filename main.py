@@ -287,21 +287,21 @@ async def arpansa():
 		if first_forecast_gte_3_item:
 			first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
 			embed.title = "Sun protection required today"
-			await ch.send(f"<@&{role}")
-			embed.add_field(name="Times", value=f"Between {first_forecast_gte_3_item['Date'][-5:]} and {first_forecast_lt_3_item['Date'][-5:]}")
+			await ch.send(f"<@&{role}>")
+			embed.add_field(name="Times", value=f"Between {first_forecast_gte_3_item['Date'][-5:]} and {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
 			cursor.execute("UPDATE uv_times SET safe = 0")
 		else:
 			embed.title = "No sun protection required today"
 			cursor.execute("UPDATE uv_times SET safe = 1")
-		embed.add_field(name="Today's maximum", value=f"{max_uv_today} at {max_uv_today_time}")
-		embed.add_field(name="Current UV", value=f"{current_uv} {calculate_emoji(current_uv)}")
+		embed.add_field(name="Today's maximum", value=f"{max_uv_today} {calculate_emoji(max_uv_today)} at {max_uv_today_time}", inline=False)
+		embed.add_field(name="Current UV", value=f"{current_uv} {calculate_emoji(current_uv)}", inline=False)
 		msg = await ch.send(embed=embed)
 		cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
 		cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
 
 	msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
 	emb = msg.embeds[0]
-	emb.set_field_at(-1, value=f"{current_uv} {calculate_emoji(current_uv)}")
+	emb.set_field_at(-1, name="Current UV", value=f"{current_uv} {calculate_emoji(current_uv)}")
 	emb.color = discord.Color(calculate_hex(current_uv))
 	await msg.edit(embed=emb)
 
