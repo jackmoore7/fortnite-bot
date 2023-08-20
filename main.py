@@ -9,6 +9,7 @@ import asyncio
 import feedparser
 from datetime import datetime as dt, timedelta
 from datetime import time
+from time import mktime
 from discord.ext import tasks
 from discord.ext import commands, pages
 from discord.ext.pages import Paginator, Page
@@ -19,7 +20,10 @@ import glob
 import urllib.request
 from num2words import num2words
 import imghdr
+import faulthandler, signal
+from PIL import Image
 
+faulthandler.register(signal.SIGUSR1)
 
 load_dotenv()
 
@@ -179,13 +183,29 @@ async def fortnite_shop_update_v2():
 			for item in diff:
 				if item[0]:
 					newuuid = str(uuid.uuid4())
-					#urllib.request.urlretrieve(item[0], 'temp_images/' + newuuid + '.png')
 					img = urllib.request.urlopen(item[0])
 					img_data = img.read()
 					img_type = imghdr.what(None, h=img_data)
 					if img_type:
-						with open(f'temp_images/{newuuid}.{img_type}', "wb") as f:
-							f.write(img_data)
+						max_retries = 5
+						for attempt in range(max_retries):
+							try:
+								with open(f'temp_images/{newuuid}.{img_type}', "wb") as f:
+									f.write(img_data)
+								image = Image.open(f'temp_images/{newuuid}.{img_type}')
+								image.verify()
+								print(f"{newuuid} was successfully downloaded and verified")
+								break
+							except Exception as e:
+								print(f"Broken image detected: {e}")
+								os.remove(f'temp_images/{newuuid}.{img_type}')
+								if attempt < max_retries - 1:
+									print(f"Retrying ({attempt + 1}/{max_retries})...")
+									await asyncio.sleep(2)
+								else:
+									print(f"Max retries reached, failed to download {newuuid}")
+									no_images.append(item[1])
+									break
 					else:
 						no_images.append(item[1])
 				else:
@@ -207,7 +227,7 @@ async def fortnite_shop_update_v2():
 				await channel.send(file=discord.File(f))
 				os.remove(f)
 			if no_images:
-				await channel.send("The following items did not have associated images:")
+				await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
 				for item in no_images:
 					await channel.send(item)
 			await channel.send("---")
@@ -239,7 +259,7 @@ async def fortnite_shop_offers():
 				if item['expiryDate']:
 					date_time_obj = dt.strptime(item['expiryDate'], '%Y-%m-%dT%H:%M:%S.%fZ')
 					struct_time = date_time_obj.timetuple()
-					timestamp = f"<t:{int(time.mktime(struct_time))}:R>"
+					timestamp = f"<t:{int(mktime(struct_time))}:R>"
 				else:
 					timestamp = "<t:2147483647:R>"
 				og_price = item['price']['totalPrice']['fmtPrice']['originalPrice'][2:]
@@ -276,32 +296,36 @@ async def arpansa():
 	db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
 	data = get_arpansa_data()
 	current_uv = float(data['CurrentUVIndex'])
+	max_uv_today_recorded = float(data['MaximumUVLevel'])
+	max_uv_today_recorded_time = data['MaximumUVLevelDateTime'][-5:]
 	r = data['GraphData']
 
 	if db_date != current_date:
 		print("It's a new day!")
 		first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
-		max_uv_today = max(r, key=lambda item: item['Forecast'])['Forecast']
-		max_uv_today_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
+		max_uv_today_forecast = max(r, key=lambda item: item['Forecast'])['Forecast']
+		max_uv_today_forecast_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
 		embed = discord.Embed(color=0xa3c80a)
 		if first_forecast_gte_3_item:
 			first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
 			embed.title = "Sun protection required today"
 			await ch.send(f"<@&{role}>")
-			embed.add_field(name="Times", value=f"Between {first_forecast_gte_3_item['Date'][-5:]} and {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
+			embed.add_field(name="Time", value=f"{first_forecast_gte_3_item['Date'][-5:]} - {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
 			cursor.execute("UPDATE uv_times SET safe = 0")
 		else:
 			embed.title = "No sun protection required today"
 			cursor.execute("UPDATE uv_times SET safe = 1")
-		embed.add_field(name="Today's maximum", value=f"{max_uv_today} {calculate_emoji(max_uv_today)} at {max_uv_today_time}", inline=False)
-		embed.add_field(name="Current UV", value=f"{current_uv} {calculate_emoji(current_uv)}", inline=False)
+		embed.add_field(name="Maximum UV (Forecast)", value=f"{calculate_emoji(max_uv_today_forecast)} {max_uv_today_forecast} at {max_uv_today_forecast_time}", inline=False)
+		embed.add_field(name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
+		embed.add_field(name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}", inline=False)
 		msg = await ch.send(embed=embed)
 		cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
 		cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
 
 	msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
 	emb = msg.embeds[0]
-	emb.set_field_at(-1, name="Current UV", value=f"{current_uv} {calculate_emoji(current_uv)}")
+	emb.set_field_at(-1, name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}")
+	emb.set_field_at(-2, name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
 	emb.color = discord.Color(calculate_hex(current_uv))
 	await msg.edit(embed=emb)
 
@@ -380,6 +404,20 @@ async def list(ctx):
 			await ctx.respond(embed=embed)
 		except Exception as e:
 			await ctx.respond(f"Couldn't get list: {e}")
+
+@discordClient.slash_command(description="[Owner] Edit a message")
+async def edit_message(ctx, id, content):
+	try:
+		if ctx.user.id != int(os.getenv('ME')):
+			await ctx.respond("nice try bozo")
+		else:
+			channel = ctx.channel
+			msg = await channel.fetch_message(id)
+			await msg.edit(content=content)
+			await ctx.respond("Edit successful.", ephemeral=True)
+
+	except Exception as e:
+		await ctx.respond(e, ephemeral=True)
 
 @discordClient.slash_command(description="[Owner] Stop an internal task")
 async def stop_task(ctx, task_name):
