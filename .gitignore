@@ -6,3 +6,4 @@
 *.torrent
 *.sh
 ephemeral_port.py
+*.mp3

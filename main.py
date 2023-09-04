@@ -14,6 +14,7 @@ from discord.ext import tasks
 from discord.ext import commands, pages
 from discord.ext.pages import Paginator, Page
 from discord.ui import Button, View
+from discord import Option
 import sqlite3 as sl
 from dotenv import load_dotenv
 import glob
@@ -22,8 +23,11 @@ from num2words import num2words
 import imghdr
 import faulthandler, signal
 from PIL import Image
+import json
+import traceback
 
-faulthandler.register(signal.SIGUSR1)
+faulthandler.enable(file=sys.stderr, all_threads=True)
+faulthandler.register(signal.SIGUSR1.value)
 
 load_dotenv()
 
@@ -50,7 +54,6 @@ aldi_regex = r'(?i)[a4@]\s*[il1\|]\s*d\s*[il1\|]'
 
 @discordClient.event
 async def on_ready():
-	print(f'{discordClient.user} is now online!')
 	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="for <store>"))
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
@@ -66,6 +69,9 @@ async def on_ready():
 	tasks_list["offers"] = fortnite_shop_offers
 	tasks_list["coles"] = coles_specials_bg
 	tasks_list["arpansa"] = arpansa
+	print(f'{discordClient.user} is now online!')
+	user = discordClient.get_user(int(os.getenv('ME')))
+	await user.send(f"I'm online. My PID is {os.getpid()}.")
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
@@ -168,7 +174,14 @@ async def fortnite_shop_update_v2():
 		new_uid = r['lastUpdate']['uid']
 		no_images = []
 		if new_uid != uid:
-			today = [(item['displayAssets'][0]['full_background'], item['displayName']) for item in r['shop']]
+			# today = [(item['displayAssets'][0]['full_background'], item['displayName']) for item in r['shop']]
+			today = []
+			for item in r['shop']:
+				if 'displayAssets' in item and item['displayAssets'] and 'full_background' in item['displayAssets'][0]:
+					today.append((item['displayAssets'][0]['full_background'], item['displayName']))
+				else:
+					no_images.append(item['displayName'])
+
 			yesterday = cursor.execute("SELECT * FROM shop_content").fetchall()
 			diff = [tup for tup in today if tup[1] not in (y[1] for y in yesterday)]
 			if len(diff) < 1:
@@ -235,12 +248,117 @@ async def fortnite_shop_update_v2():
 			cursor.executemany("INSERT INTO shop_content VALUES (?, ?)", [(item[0], item[1]) for item in today])
 			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
 	except Exception as e:
-		print(f"Something went wrong ((V2)): {e}\nRestarting internal task in 1 minute.")
+		print(traceback.format_exc())
 		files = glob.glob('temp_images/*.png')
 		for f in files:
 			os.remove(f)
 		await asyncio.sleep(60)
 		fortnite_shop_update_v2.restart()
+
+@tasks.loop(minutes=5)
+async def fortnite_shop_update_v3():
+
+	def process_image(url, name):
+		new_uuid = str(uuid.uuid4())
+		img = requests.get(url)
+		img_type = imghdr.what(None, h=img.content)
+		if img_type:
+			max_retries = 5
+			for attempt in range(max_retries):
+				try:
+					with open(f'temp_images/{new_uuid}.{img_type}', "wb") as f:
+						f.write(img.content)
+					image = Image.open(f'temp_images/{new_uuid}.{img_type}')
+					image.verify()
+					print(f"{new_uuid} was successfully downloaded and verified")
+					return f"{new_uuid}.{img_type}"
+				except Exception as e:
+					print(f"Broken image detected: {e}")
+					os.remove(f'temp_images/{new_uuid}.{img_type}')
+					if attempt < max_retries - 1:
+						print(f"Retrying ({attempt + 1}/{max_retries})...")
+					else:
+						print(f"Max retries reached, failed to download {new_uuid}")
+						no_images.append(name)
+						break
+		else:
+			no_images.append(name)
+
+	def timestampify(string):
+		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+		struct_time = date_time_obj.timetuple()
+		return f"<t:{int(mktime(struct_time))}:R>"
+		
+
+	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+	r = fortnite_shop_v3()
+	date = cursor.execute("SELECT date FROM shop_v3").fetchone()[0]
+	new_date = r['data']['date']
+	if new_date != date:
+		ping_list = cursor.execute("SELECT item, id FROM shop_ping").fetchall()
+		no_images = []
+		daily = []
+		for item in r['data']['daily']:
+			if 'gallery' in item['images'] and item['images']['gallery']:
+				daily.append((item['images']['gallery'], item['name'], item['history']['lastSeen']))
+			elif 'featured' in item['images'] and item['images']['featured']:
+				daily.append((item['images']['featured'], item['name'], item['history']['lastSeen']))
+			elif 'icon' in item['images'] and item['images']['icon']:
+				daily.append((item['images']['icon'], item['name'], item['history']['lastSeen']))
+			else:
+				no_images.append((item['name'], item['history']['lastSeen']))
+		featured = []
+		for item in r['data']['featured']:
+			if 'gallery' in item['images'] and item['images']['gallery']:
+				featured.append((item['images']['gallery'], item['name'], item['history']['lastSeen']))
+			elif 'featured' in item['images'] and item['images']['featured']:
+				featured.append((item['images']['featured'], item['name'], item['history']['lastSeen']))
+			elif 'icon' in item['images'] and item['images']['icon']:
+				featured.append((item['images']['icon'], item['name'], item['history']['lastSeen']))
+			else:
+				no_images.append((item['name'], item['history']['lastSeen']))
+		yesterday = cursor.execute("SELECT * FROM shop_v3_content").fetchall()
+		diff = [item for item in featured if item[1] not in (item[1] for item in yesterday)]
+		if len(diff) < 1:
+			diff2 = [item for item in yesterday if item[1] not in (item[1] for item in featured)] #check if something was deleted from the list
+			if len(diff2) > 0:
+				await channel.send("The following items were just deleted from the shop:")
+				for item in diff2:
+					await channel.send(f"{item[1]}")
+			cursor.execute("UPDATE shop_v3 SET date = ?", (new_date,))
+			return
+		print(f"daily: {len(daily)}")
+		print(f"featured: {len(featured)}")
+		print(f"diff: {len(diff)}")
+		await channel.send("# Fortnite shop update")
+		await channel.send(f"{(len(daily) + len(diff))} items were just added to the shop.")
+		await channel.send("## Daily rotation")
+		for item in daily:
+			img = process_image(item[0], item[1])
+			matching_items = [i for i, u in ping_list if i.lower() in item[1].lower()]
+			for cosmetic in matching_items:
+				users = [u for i, u in ping_list if i == cosmetic]
+				for user in users:
+					await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
+			await channel.send(f"{item[1]} - Last seen {timestampify(item[2])}", file=discord.File(f'temp_images/{img}'))
+			os.remove(f'temp_images/{img}')
+		await channel.send("## Featured")
+		for item in diff:
+			img = process_image(item[0], item[1])
+			matching_items = [i for i, u in ping_list if i.lower() in item[1].lower()]
+			for cosmetic in matching_items:
+				users = [u for i, u in ping_list if i == cosmetic]
+				for user in users:
+					await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
+			await channel.send(f"{item[1]} - Last seen {timestampify(item[2])}", file=discord.File(f'temp_images/{img}'))
+			os.remove(f'temp_images/{img}')
+		if no_images:
+			await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
+			for item in no_images:
+				await channel.send(item)
+		cursor.execute("DELETE FROM shop_v3_content")
+		cursor.executemany("INSERT INTO shop_v3_content VALUES (?, ?)", [(item[0], item[1]) for item in featured])
+		cursor.execute("UPDATE shop_v3 SET date = ?", (date,))
 
 @tasks.loop(minutes=60)
 async def fortnite_shop_offers():
@@ -290,49 +408,56 @@ time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minut
 
 @tasks.loop(time=time_list)
 async def arpansa():
-	ch = discordClient.get_channel(int(os.getenv('UV_CHANNEL')))
-	role = os.getenv('SUNSCREEN_ROLE')
-	current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
-	db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
-	data = get_arpansa_data()
-	current_uv = float(data['CurrentUVIndex'])
-	max_uv_today_recorded = float(data['MaximumUVLevel'])
-	max_uv_today_recorded_time = data['MaximumUVLevelDateTime'][-5:]
-	r = data['GraphData']
+	try:
+		ch = discordClient.get_channel(int(os.getenv('UV_CHANNEL')))
+		role = os.getenv('SUNSCREEN_ROLE')
+		current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
+		db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
+		data = get_arpansa_data()
+		current_uv = float(data['CurrentUVIndex'])
+		max_uv_today_recorded = float(data['MaximumUVLevel'])
+		max_uv_today_recorded_time = data['MaximumUVLevelDateTime'][-5:]
+		r = data['GraphData']
 
-	if db_date != current_date:
-		print("It's a new day!")
-		first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
-		max_uv_today_forecast = max(r, key=lambda item: item['Forecast'])['Forecast']
-		max_uv_today_forecast_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
-		embed = discord.Embed(color=0xa3c80a)
-		if first_forecast_gte_3_item:
-			first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
-			embed.title = "Sun protection required today"
-			await ch.send(f"<@&{role}>")
-			embed.add_field(name="Time", value=f"{first_forecast_gte_3_item['Date'][-5:]} - {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
+		if db_date != current_date:
+			print("It's a new day!")
+			first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
+			max_uv_today_forecast = max(r, key=lambda item: item['Forecast'])['Forecast']
+			max_uv_today_forecast_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
+			embed = discord.Embed(color=0xa3c80a)
+			if first_forecast_gte_3_item:
+				first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
+				embed.title = "Sun protection required today"
+				await ch.send(f"<@&{role}>")
+				embed.add_field(name="Time", value=f"{first_forecast_gte_3_item['Date'][-5:]} - {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
+				cursor.execute("UPDATE uv_times SET safe = 0")
+			else:
+				embed.title = "No sun protection required today"
+				cursor.execute("UPDATE uv_times SET safe = 1")
+			embed.add_field(name="Maximum UV (Forecast)", value=f"{calculate_emoji(max_uv_today_forecast)} {max_uv_today_forecast} at {max_uv_today_forecast_time}", inline=False)
+			embed.add_field(name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
+			embed.add_field(name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}", inline=False)
+			msg = await ch.send(embed=embed)
+			cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
+			cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
+
+		msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
+		emb = msg.embeds[0]
+		emb.set_field_at(-1, name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}")
+		emb.set_field_at(-2, name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
+		emb.color = discord.Color(calculate_hex(current_uv))
+		await msg.edit(embed=emb)
+
+		await ch.edit(name=f"{calculate_emoji(current_uv)} uv")
+
+		safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
+		if safe and current_uv >= 3:
+			await ch.send(f"<@&{role}> Earlier forecast was incorrect - UV index is now above safe levels. slip slop slap bitch")
 			cursor.execute("UPDATE uv_times SET safe = 0")
-		else:
-			embed.title = "No sun protection required today"
-			cursor.execute("UPDATE uv_times SET safe = 1")
-		embed.add_field(name="Maximum UV (Forecast)", value=f"{calculate_emoji(max_uv_today_forecast)} {max_uv_today_forecast} at {max_uv_today_forecast_time}", inline=False)
-		embed.add_field(name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
-		embed.add_field(name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}", inline=False)
-		msg = await ch.send(embed=embed)
-		cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
-		cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
-
-	msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
-	emb = msg.embeds[0]
-	emb.set_field_at(-1, name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}")
-	emb.set_field_at(-2, name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
-	emb.color = discord.Color(calculate_hex(current_uv))
-	await msg.edit(embed=emb)
-
-	safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
-	if safe and current_uv >= 3:
-		await ch.send(f"<@&{role}> Earlier forecast was incorrect - UV index is now above safe levels. slip slop slap bitch")
-		cursor.execute("UPDATE uv_times SET safe = 0")
+	except Exception as e:
+		print(f"ARPANSA task encountered an exception: {e}")
+		await asyncio.sleep(60)
+		arpansa.restart()
 
 @discordClient.slash_command(description="Search a Coles item by name")
 async def search_coles_item(ctx, name):
@@ -724,16 +849,198 @@ async def delete_message_by_id(ctx, id):
 		channel = ctx.channel
 		message = await channel.fetch_message(id)
 		await message.delete()
-	except discord.NotFound:
-		print("Message not found.")
-	except discord.Forbidden:
-		print("Bot doesn't have permission to delete messages.")
-	except discord.HTTPException:
-		print("An error occurred while trying to delete the message.")
+		await ctx.respond("Deleted", ephemeral=True)
+	except Exception as e:
+		await ctx.respond(e)
 
 @discordClient.slash_command()
 async def elevation(ctx, lat, long):
 	await ctx.respond(get_elevation(lat, long))
+
+@discordClient.slash_command()
+async def die(ctx):
+	if ctx.user.id != int(os.getenv('ME')):
+		await ctx.respond("nice try bozo")
+		return
+	await ctx.respond("Death request received 🫡")
+	await discordClient.close()
+
+# @discordClient.slash_command(description="Ask ChatGPT a question (GPT-3.5-turbo, conversational)")
+# async def chatgpt(ctx, message):
+# 	await ctx.defer()
+# 	try:
+# 		# id = ctx.user.id
+# 		id = 0
+# 		messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
+# 		if messages_row:
+# 			messages_list = json.loads(messages_row[0])
+# 		else:
+# 			messages_list = []
+# 			initial_message = {"role": "system", "content": "you're a helpful and decisive lad that LOVES fortnite and answers any questions. even if the questions aren't fortnite-related, you manage to sneak a fortnite reference into each answer. you are also very biased towards fortnite and have a fortnite accent"}
+# 			messages_list.append(initial_message)
+# 		#messages_list = json.loads(messages_list)
+# 		new_message = {"role": "user", "content": message}
+# 		messages_list.append(new_message)
+# 		response = chatgpt_query(messages_list)
+# 		messages_list.append(response.choices[0].message)
+# 		updated_messages_list = json.dumps(messages_list)
+# 		cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, updated_messages_list))
+# 		total_tokens = response.usage.total_tokens
+# 		cost = (total_tokens/1000) * 0.00175
+# 		msg = await ctx.respond(response.choices[0].message.content)
+# 		cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+# 	except Exception as e:
+# 		await ctx.respond(e)
+
+chatgpt = discordClient.create_group("chatgpt", "Edit heh's AI settings")
+
+class chatgptview(discord.ui.View):
+
+	def __init__(self, prompt, user_id):
+		self.prompt = prompt
+		self.user_id = user_id
+		super().__init__()
+
+	@discord.ui.button(label="Yes, change", row=0, style=discord.ButtonStyle.primary)
+	async def first_button_callback(self, button, interaction):
+		if interaction.user.id == self.user_id:
+			self.disable_all_items()
+			try:
+				cursor.execute("UPDATE chatgpt_prompt SET prompt = ?", (self.prompt,))
+				cursor.execute("DELETE FROM chatgpt WHERE id = 0")
+				button.label = "Role changed"
+			except Exception as e:
+				button.label = f"Couldn't edit role: {e}"
+			await interaction.response.edit_message(view=self)
+		else:
+			await interaction.response.send_message("You are not authorized to use this button.", ephemeral=True)
+			return
+
+	@discord.ui.button(label="No, keep", row=0, style=discord.ButtonStyle.danger)
+	async def second_button_callback(self, button, interaction):
+		if interaction.user.id != self.user_id:
+			return
+
+		self.disable_all_items()
+		button.label = "Kept!"
+		await interaction.response.edit_message(view=self)
+
+
+
+@chatgpt.command(description="Ask ChatGPT a question (custom role, non-conversational)")
+async def custom(
+		ctx: discord.ApplicationContext,
+		role: Option(str, "Enter the role you'd like ChatGPT to assume. Eg: \"You are a helpful assistant\"", required=True),
+		message: Option(str, "The question you'd like to ask.", required=True)
+		):
+	await ctx.defer()
+	try:
+		messages_list = []
+		initial_message = {"role": "system", "content": role}
+		new_message = {"role": "user", "content": message}
+		messages_list.append(initial_message)
+		messages_list.append(new_message)
+		response = chatgpt_query(messages_list)
+		total_tokens = response.usage.total_tokens
+		cost = (total_tokens/1000) * 0.00175
+		msg = await ctx.respond(response.choices[0].message.content)
+		cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+	except Exception as e:
+		await ctx.respond(e)
+
+@chatgpt.command(description="Delete conversation history")
+async def delete_history(ctx):
+	try:
+		# id = ctx.user.id
+		id = 0
+		cursor.execute("DELETE FROM chatgpt WHERE id = ?", (id,))
+		emoji = discordClient.get_emoji(int(os.getenv('ROO_EMOJI')))
+		await ctx.respond(emoji)
+	except Exception as e:
+		await ctx.respond(e)
+
+@chatgpt.command(description="Set heh's initial prompt (This will delete conversation history!)")
+async def set_prompt(
+		ctx: discord.ApplicationContext,
+		role: Option(str, "Enter the role you'd like heh to assume. Eg: \"You are a helpful assistant\"", required=True)
+		):
+	try:
+		user_id = ctx.user.id
+		prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
+		await ctx.respond(f"Current role is:\n{prompt}\n\nAre you sure you want to change it to:\n{role}?", view=chatgptview(prompt=role, user_id=user_id))
+	except Exception as e:
+		await ctx.respond(f"oopsie woopsie fucky wucky {e}")
+		
+
+# @discordClient.slash_command(description="Generate an image with DALL·E")
+# async def dalle(ctx, prompt):
+# 	await ctx.defer()
+# 	try:
+# 		image_url = dalle_prompt(prompt)
+# 		newuuid = str(uuid.uuid4())
+# 		img = urllib.request.urlopen(image_url)
+# 		img_data = img.read()
+# 		with open(f'dalle/{newuuid}.png', "wb") as f:
+# 			f.write(img_data)
+# 		msg = await ctx.respond(file=discord.File(f'dalle/{newuuid}.png'))
+# 		os.remove(f'dalle/{newuuid}.png')
+# 		cost = 0.02
+# 		cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+# 	except Exception as e:
+# 		await ctx.respond(e)
+
+# @discordClient.slash_command(description="Generate a variation of an image you provide with DALL·E")
+# async def dalle_variation(ctx):
+# 	await ctx.defer()
+# 	try:
+# 		if ctx.message.reference and ctx.message.reference.cached_message:
+# 			replied_message = ctx.message.reference.cached_message
+# 			if replied_message.attachments:
+# 				attachment = replied_message.attachments[0]
+# 				newuuid = str(uuid.uuid4())
+# 				await attachment.save(f'{newuuid}.png')
+# 				image_url = dalle_image_variation(newuuid)
+# 				os.remove(f'{newuuid}.png')
+# 				newuuid = str(uuid.uuid4())
+# 				img = urllib.request.urlopen(image_url)
+# 				img_data = img.read()
+# 				with open(f'dalle/{newuuid}.png', "wb") as f:
+# 					f.write(img_data)
+# 				msg = await ctx.respond(file=discord.File(f'dalle/{newuuid}.png'))
+# 				os.remove(f'dalle/{newuuid}.png')
+# 				cost = 0.02
+# 				cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+# 			else:
+# 				await ctx.respond("This message doesn't contain any attachments.")
+# 		else:
+# 			if ctx.message.reference:
+# 				await ctx.respond("I don't have that message cached, maybe send it again!")
+# 			await ctx.respond("You need to use this command with a reply to a message.")
+
+
+		# message = await ctx.channel.fetch_message(message_id)
+		# if len(message.attachments) > 0:
+		# 	attachment = message.attachments[0]
+		# 	newuuid = str(uuid.uuid4())
+		# 	await attachment.save(f'{newuuid}.png')
+		# 	image_url = dalle_image_variation(newuuid)
+		# 	os.remove(f'{newuuid}.png')
+		# 	newuuid = str(uuid.uuid4())
+		# 	img = urllib.request.urlopen(image_url)
+		# 	img_data = img.read()
+		# 	with open(f'dalle/{newuuid}.png', "wb") as f:
+		# 		f.write(img_data)
+		# 	msg = await ctx.respond(file=discord.File(f'dalle/{newuuid}.png'))
+		# 	os.remove(f'dalle/{newuuid}.png')
+		# 	cost = 0.02
+		# 	cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+		# else:
+		# 	await ctx.respond("This message doesn't contain any images.")
+	# except Exception as e:
+	# 	await ctx.respond(e)
+
+		
+		
 
 def time_to_text(hour:int, minute:int):
 	if minute == 0:
@@ -767,10 +1074,65 @@ def get_time_message(message_hour:int, message_min:int, created_hour:int):
 
 @discordClient.event
 async def on_message(message):
-	message.content = message.content.lower()
-	original_content = message.content
 	if message.author == discordClient.user:
 		return
+	if 'redacted' in message.content.lower():
+		return
+
+	if discordClient.user in message.mentions: #and message.reference and message.reference.cached_message:
+		# replied_message = message.reference.cached_message
+		# if replied_message.attachments:
+		await message.channel.trigger_typing()
+		# try:
+			# id = ctx.user.id
+		id = 0
+		messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
+		prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
+		if messages_row:
+			messages_list = json.loads(messages_row[0])
+		else:
+			print("we're starting the list again.")
+			messages_list = []
+			initial_message = {"role": "system", "content": prompt}
+			messages_list.append(initial_message)
+			dumped = json.dumps(messages_list)
+			cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, dumped))
+		#messages_list = json.loads(messages_list)
+		new_message = {"role": "user", "content": str(message.content)}
+		print(f"message content: {message.content}")
+		messages_list.append(new_message)
+		response = chatgpt_query(messages_list)
+		messages_list.append(response.choices[0].message)
+		print(f"messages list: {messages_list}")
+		updated_messages_list = json.dumps(messages_list)
+		#cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, updated_messages_list))
+		cursor.execute("UPDATE chatgpt SET messages = ? WHERE id = ?", (updated_messages_list, id))
+		total_tokens = response.usage.total_tokens
+		cost = (total_tokens/1000) * 0.00175
+		response_content = response.choices[0].message.content
+		if 'aldi' in response.choices[0].message.content.lower():
+			await message.reply("Not today, pal.", mention_author=False)
+		if len(response_content) >= 2000:
+			print("message is too long, let's split it up")
+			response_list = []
+			offset = 0
+			while offset < len(response_content):
+				chunk = response_content[offset:offset+2000]
+				reversed_chunk = chunk[::-1]
+				length = reversed_chunk.find("\n")
+				chunk = chunk[:2000 - length]
+				offset += 2000 - length
+				response_list.append(chunk)
+			await message.reply(response_list[0], mention_author=False)
+			for msg in response_list[1:]:
+				await message.channel.send(msg)
+		else:
+			# msg = await message.channel.send(response_content)
+			msg = await message.reply(response_content, mention_author=False)
+			cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+
+	message.content = message.content.lower()
+	original_content = message.content
 	bl = [row[0] for row in cursor.execute("SELECT hex FROM blacklist").fetchall()]
 	wl = [row[0] for row in cursor.execute("SELECT hex FROM whitelist").fetchall()]
 	for character in message.content:
@@ -785,12 +1147,12 @@ async def on_message(message):
 			await message.delete()
 			return
 
-	time1 = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
-	if time1:
-		time1 = time1.group()
-		time1 = time1.split(":")
-		to_send = get_time_message(int(time1[0]), int(time1[1]), message.created_at.hour) + "\n"
-		await message.channel.send(to_send)
+	# time1 = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
+	# if time1:
+	# 	time1 = time1.group()
+	# 	time1 = time1.split(":")
+	# 	to_send = get_time_message(int(time1[0]), int(time1[1]), message.created_at.hour) + "\n"
+	# 	await message.channel.send(to_send)
 
 	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
 	if urls:
@@ -858,6 +1220,10 @@ async def on_message(message):
 			view = View()
 			view.add_item(button)
 			await channel.send(attachment.url, view=view)
+		if attachment_type == 'audio':
+			await attachment.save("audio.mp3")
+			response = transcribe_audio("audio.mp3")
+			await message.channel.send(response.text)
 		if attachment_type == 'image':
 			myuuid = str(uuid.uuid4())
 			await attachment.save(myuuid)
@@ -976,6 +1342,31 @@ async def on_reaction_add(reaction, user):
 			id = reaction.message.id
 			response = cursor.execute("SELECT guess, score FROM ai_text WHERE id = ?", (id,)).fetchall()
 			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
+	if reaction.emoji == "❓":
+		id = reaction.message.id
+		response = cursor.execute("SELECT cost FROM chatgpt_cost WHERE id = ?", (id,)).fetchone()
+		total = cursor.execute("SELECT SUM(cost) FROM chatgpt_cost").fetchone()[0]
+		if(response):
+			await reaction.clear()
+			await reaction.message.reply(f"Cost for this response was ${response[0]}\nTotal so far is ${total}")
+	if reaction.emoji == "🤖":
+		id = reaction.message.id
+		if reaction.message.attachments:
+			await reaction.clear()
+			attachment = reaction.message.attachments[0]
+			newuuid = str(uuid.uuid4())
+			await attachment.save(f'{newuuid}.png')
+			image_url = dalle_image_variation(newuuid)
+			os.remove(f'{newuuid}.png')
+			newuuid = str(uuid.uuid4())
+			img = urllib.request.urlopen(image_url)
+			img_data = img.read()
+			with open(f'dalle/{newuuid}.png', "wb") as f:
+				f.write(img_data)
+			msg = await reaction.message.reply(file=discord.File(f'dalle/{newuuid}.png'))
+			os.remove(f'dalle/{newuuid}.png')
+			cost = 0.02
+			cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
 
 @discordClient.event
 async def on_member_update(before, after):
@@ -983,5 +1374,10 @@ async def on_member_update(before, after):
         return
     if re.search(aldi_regex, after.nick):
         await after.edit(nick='loser')
+
+@discordClient.event
+async def on_member_remove(member):
+	channel = discordClient.get_channel(int(os.getenv('BEG_4_VBUCKS')))
+	await channel.send(f"{member} just left the server. https://tenor.com/view/thanos-fortnite-takethel-dance-gif-12100688")
 
 discordClient.run(os.getenv('TOKEN'))
