@@ -7,3 +7,4 @@
 *.sh
 ephemeral_port.py
 *.mp3
+*.log

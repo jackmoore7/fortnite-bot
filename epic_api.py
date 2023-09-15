@@ -167,3 +167,26 @@ def get_user_presence(user_id):
             return r.json()[user_id][0]['last_online']
     except Exception as e:
         return None
+    
+def get_free_games():
+    url = "https://store-site-backend-static-ipv4.ak.epicgames.com/freeGamesPromotions?locale=en-US&country=AU&allowCountries=AU"
+    r = requests.get(url)
+    if r.status_code == 200:
+        r = r.json()
+        games_list = []
+        games = r['data']['Catalog']['searchStore']['elements']
+        for game in games:
+            if game['promotions'] and 'upcomingPromotionalOffers' in game['promotions']:
+                for upcoming_promos in game['promotions']['upcomingPromotionalOffers']:
+                    if 'promotionalOffers' in upcoming_promos:
+                        for promotional_offers in upcoming_promos['promotionalOffers']:
+                            if promotional_offers['discountSetting']['discountPercentage'] == 0:
+                                title = game['title']
+                                description = game['description']
+                                image_url = [item["url"] for item in game["keyImages"] if item["type"] == "Thumbnail"]
+                                start_date = promotional_offers['startDate']
+                                end_date = promotional_offers['endDate']
+                                games_list.append((title, description, image_url[0], start_date, end_date)) 
+        return games_list
+    else:
+        return None

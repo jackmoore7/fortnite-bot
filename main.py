@@ -26,7 +26,7 @@ from PIL import Image
 import json
 import traceback
 
-faulthandler.enable(file=sys.stderr, all_threads=True)
+faulthandler.enable(file=open('error.log', 'w'))
 faulthandler.register(signal.SIGUSR1.value)
 
 load_dotenv()
@@ -39,6 +39,7 @@ from key_handling import *
 from epic_api import *
 from coles import *
 from uv import *
+from openai_api import *
 
 intents = discord.Intents.all()
 intents.members = True
@@ -62,6 +63,7 @@ async def on_ready():
 	fortnite_shop_offers.start()
 	coles_specials_bg.start()
 	arpansa.start()
+	epic_free_games.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -69,9 +71,7 @@ async def on_ready():
 	tasks_list["offers"] = fortnite_shop_offers
 	tasks_list["coles"] = coles_specials_bg
 	tasks_list["arpansa"] = arpansa
-	print(f'{discordClient.user} is now online!')
-	user = discordClient.get_user(int(os.getenv('ME')))
-	await user.send(f"I'm online. My PID is {os.getpid()}.")
+	print(f"{discordClient.user} is online! My PID is {os.getpid()}.")
 
 @tasks.loop(minutes=1)
 async def fortnite_update_bg():
@@ -359,6 +359,52 @@ async def fortnite_shop_update_v3():
 		cursor.execute("DELETE FROM shop_v3_content")
 		cursor.executemany("INSERT INTO shop_v3_content VALUES (?, ?)", [(item[0], item[1]) for item in featured])
 		cursor.execute("UPDATE shop_v3 SET date = ?", (date,))
+
+@tasks.loop(minutes=60)
+async def epic_free_games():
+	
+	ch = discordClient.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
+
+	def timestampify(string):
+		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+		struct_time = date_time_obj.timetuple()
+		timestamp = f"<t:{int(mktime(struct_time))}:R>"
+		return timestamp
+
+	def test_time(string):
+		start_dt = dt.fromisoformat(string[:-1])
+		current_dt = dt.utcnow()
+		if current_dt >= start_dt:
+			return True
+		else:
+			return False
+
+	games_list = get_free_games()
+	existing_games_list = cursor.execute("SELECT * FROM free_games").fetchall()
+	for game in existing_games_list:
+		if test_time(game[3]):
+			await ch.send(f"<@&{os.getenv('FREE_GAMES_ROLE')}>, {game[0]} is available to claim right now!")
+			cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
+	diff = [game for game in games_list if game[0] not in (game[0] for game in existing_games_list)]
+	if len(diff) > 0:
+		for game in diff:
+			if test_time(game[3]):
+				pass
+			embed = discord.Embed()
+			embed.title = "New free game on the Epic Games store"
+			embed.set_image(url=game[2])
+			embed.add_field(name="Title", value=game[0], inline=False)
+			embed.add_field(name="Description", value=game[1], inline=False)
+			embed.add_field(name="Starts", value=timestampify(game[3]))
+			embed.add_field(name="Ends", value=timestampify(game[4]))
+			await ch.send(embed=embed)
+			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], game[3]))
+	else:
+		diff2 = [game for game in existing_games_list if game[1] not in (game[1] for game in games_list)]
+		if len(diff2) > 0:
+			for game in diff2:
+				print(f"Promotional period ended for {game[0]}")
+				cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
 
 @tasks.loop(minutes=60)
 async def fortnite_shop_offers():
@@ -913,7 +959,7 @@ class chatgptview(discord.ui.View):
 				button.label = f"Couldn't edit role: {e}"
 			await interaction.response.edit_message(view=self)
 		else:
-			await interaction.response.send_message("You are not authorized to use this button.", ephemeral=True)
+			await interaction.response.send_message("This button isn't yours!", ephemeral=True)
 			return
 
 	@discord.ui.button(label="No, keep", row=0, style=discord.ButtonStyle.danger)
@@ -967,7 +1013,7 @@ async def set_prompt(
 	try:
 		user_id = ctx.user.id
 		prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
-		await ctx.respond(f"Current role is:\n{prompt}\n\nAre you sure you want to change it to:\n{role}?", view=chatgptview(prompt=role, user_id=user_id))
+		await ctx.respond(f"Current role is:\n{prompt}\n\nAre you sure you want to change it to:\n{role}", view=chatgptview(prompt=role, user_id=user_id))
 	except Exception as e:
 		await ctx.respond(f"oopsie woopsie fucky wucky {e}")
 		
@@ -1076,117 +1122,65 @@ def get_time_message(message_hour:int, message_min:int, created_hour:int):
 async def on_message(message):
 	if message.author == discordClient.user:
 		return
-	if 'redacted' in message.content.lower():
-		return
-
-	if discordClient.user in message.mentions: #and message.reference and message.reference.cached_message:
-		# replied_message = message.reference.cached_message
-		# if replied_message.attachments:
-		await message.channel.trigger_typing()
-		# try:
-			# id = ctx.user.id
-		id = 0
-		messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
-		prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
-		if messages_row:
-			messages_list = json.loads(messages_row[0])
-		else:
-			print("we're starting the list again.")
-			messages_list = []
-			initial_message = {"role": "system", "content": prompt}
-			messages_list.append(initial_message)
-			dumped = json.dumps(messages_list)
-			cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, dumped))
-		#messages_list = json.loads(messages_list)
-		new_message = {"role": "user", "content": str(message.content)}
-		print(f"message content: {message.content}")
-		messages_list.append(new_message)
-		response = chatgpt_query(messages_list)
-		messages_list.append(response.choices[0].message)
-		print(f"messages list: {messages_list}")
-		updated_messages_list = json.dumps(messages_list)
-		#cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, updated_messages_list))
-		cursor.execute("UPDATE chatgpt SET messages = ? WHERE id = ?", (updated_messages_list, id))
-		total_tokens = response.usage.total_tokens
-		cost = (total_tokens/1000) * 0.00175
-		response_content = response.choices[0].message.content
-		if 'aldi' in response.choices[0].message.content.lower():
-			await message.reply("Not today, pal.", mention_author=False)
-		if len(response_content) >= 2000:
-			print("message is too long, let's split it up")
-			response_list = []
-			offset = 0
-			while offset < len(response_content):
-				chunk = response_content[offset:offset+2000]
-				reversed_chunk = chunk[::-1]
-				length = reversed_chunk.find("\n")
-				chunk = chunk[:2000 - length]
-				offset += 2000 - length
-				response_list.append(chunk)
-			await message.reply(response_list[0], mention_author=False)
-			for msg in response_list[1:]:
-				await message.channel.send(msg)
-		else:
-			# msg = await message.channel.send(response_content)
-			msg = await message.reply(response_content, mention_author=False)
-			cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-
-	message.content = message.content.lower()
-	original_content = message.content
-	bl = [row[0] for row in cursor.execute("SELECT hex FROM blacklist").fetchall()]
-	wl = [row[0] for row in cursor.execute("SELECT hex FROM whitelist").fetchall()]
-	for character in message.content:
-		char = character.encode("utf-8").hex()
-		if (char in bl):
-			await message.delete()
-			return
-		if len(char) > 2 and len(char) < 8 and (char not in wl) and (message.author.id == os.getenv('ANDY')): #lol
-			ch = discordClient.get_channel(int(os.getenv('TEST_CHANNEL')))
-			await ch.send("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
-			await message.channel.send(character + " is not allowed")
-			await message.delete()
-			return
-
-	# time1 = re.search(r'([0-1]?[0-9]|2[0-3]):[0-5][0-9]', message.content)
-	# if time1:
-	# 	time1 = time1.group()
-	# 	time1 = time1.split(":")
-	# 	to_send = get_time_message(int(time1[0]), int(time1[1]), message.created_at.hour) + "\n"
-	# 	await message.channel.send(to_send)
+	if discordClient.user in message.mentions:
+		async with message.channel.typing():
+			try:
+				id = 0
+				messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
+				prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
+				if messages_row:
+					messages_list = json.loads(messages_row[0])
+				else:
+					print("we're starting the list again.")
+					messages_list = []
+					initial_message = {"role": "system", "content": prompt}
+					messages_list.append(initial_message)
+					dumped = json.dumps(messages_list)
+					cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, dumped))
+				new_message = {"role": "user", "content": str(message.content)}
+				print(f"message content: {message.content}")
+				messages_list.append(new_message)
+				response = chatgpt_query(messages_list)
+				messages_list.append(response.choices[0].message)
+				print(f"messages list: {messages_list}")
+				updated_messages_list = json.dumps(messages_list)
+				cursor.execute("UPDATE chatgpt SET messages = ? WHERE id = ?", (updated_messages_list, id))
+				total_tokens = response.usage.total_tokens
+				cost = (total_tokens/1000) * 0.00175
+				response_content = response.choices[0].message.content
+				if len(response_content) >= 2000:
+					print("message is too long, let's split it up")
+					response_list = []
+					offset = 0
+					while offset < len(response_content):
+						chunk = response_content[offset:offset+2000]
+						reversed_chunk = chunk[::-1]
+						length = reversed_chunk.find("\n")
+						chunk = chunk[:2000 - length]
+						offset += 2000 - length
+						response_list.append(chunk)
+					await message.reply(response_list[0], mention_author=False)
+					for msg in response_list[1:]:
+						await message.channel.send(msg)
+				else:
+					msg = await message.reply(response_content, mention_author=False)
+					cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+			except Exception as e:
+				await message.reply(e, mention_author=False)
 
 	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
 	if urls:
-		print("URL detected")
 		await asyncio.sleep(1)
 		embeds = message.embeds
 		if embeds:
-			print("Embed detected")
 			for embed in embeds:
-				print(embed.thumbnail.url)
-				if embed.title:
-					print(embed.title)
-					title = embed.title.lower()
-					if 'aldi' in title:
-						print("Found Aldi text in embed title")
-						await message.delete()
-						return
 				ocr = re.findall(r'(?i)aldi', detect_text_uri(embed.thumbnail.url))
 				if ocr:
-						print("Found Aldi text in image!")
-						await message.delete()
-						await message.channel.send("ALDI detected. Confidence: 1. 🖕") 
-						return
+					pass
 				if not ocr:
-					print("Couldn't find Aldi text. Searching for logo instead...")
 					logos = detect_logos_uri(embed.thumbnail.url)
 					for logo in logos:
 						cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
-						logo.description = logo.description.lower()
-						score = str(logo.score)
-						if logo.description == 'aldi':
-							await message.delete()
-							await message.channel.send("ALDI detected. Confidence: " + score + ". 🖕")
-							return
 					if logos:
 						await message.add_reaction("👀")
 
@@ -1198,20 +1192,10 @@ async def on_message(message):
 					if category.confidence > 49:
 						cursor.execute("INSERT INTO ai_text VALUES (?, ?, ?)", [message.id, category.name, category.confidence])
 						await message.add_reaction("💡")
-
-	message.content = re.sub(r'[^0-9a-zA-Z]+', '', message.content)
-	message.content = message.content.encode('ascii', 'ignore').decode("utf-8")
-	if re.search(aldi_regex, message.content):
-		replacement = re.sub(aldi_regex, "REDACTED", original_content)
-		webhook = (await message.channel.webhooks())[0]
-		await webhook.send(content=replacement, username=message.author.name, avatar_url=message.author.avatar)
-		await message.delete()
-		return
 	
 	for attachment in message.attachments:
 		attachment_type, attch_format = attachment.content_type.split('/')
 		if attachment_type == 'video':
-			print("Contains video")
 			if attachment.size > 52428800:
 				await message.channel.send("Video is >50MB and won't be posted to \#clips")
 				return
@@ -1227,34 +1211,20 @@ async def on_message(message):
 		if attachment_type == 'image':
 			myuuid = str(uuid.uuid4())
 			await attachment.save(myuuid)
-			print("Image detected. Searching for Aldi...")
 			await asyncio.sleep(2)
 			img = detect_text(myuuid)
 			ocr = None
 			if img:
 				ocr = re.findall(r'(?i)aldi', img)
 			if ocr:
-				try:
-					print("Found Aldi text in image! (attachment)")
-					await message.delete()
-					await message.channel.send("ALDI detected. Confidence: 1. 🖕")
-				except:
-					print("Couldn't delete message")
+				pass
 			if not ocr:
-				print("Couldn't find Aldi text. Searching for logo instead...")
 				logos = detect_logos(myuuid)
 				for logo in logos:
 					cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
-					logo.description = logo.description.lower()
-					score = str(logo.score)
-					if logo.description == 'aldi':
-						print("Found Aldi logo")
-						await message.delete()
-						await message.channel.send("ALDI detected. Confidence: " + score + ". 🖕")
 				if logos:
 					await message.add_reaction("👀")
 				if not logos:
-					print("No logos detected. Searching for labels...")
 					labels = detect_labels(myuuid)
 					for label in labels:
 						cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, label.description, label.score])
@@ -1265,17 +1235,13 @@ async def on_message(message):
 						if 'dog' in label.description:
 							await message.channel.send("rat")
 							return
-						if 'store' in label.description:
-							print("probably aldi")
-							await message.delete()
-							await message.channel.send("Might be <store> but who knows really. Confidence: not very high but it's worth the risk 🖕")
 						if 'electric blue' in label.description:
 							await message.add_reaction("⚡")
 							await message.add_reaction("🟦")
 					if labels:
 						await message.add_reaction("👀")
 			if os.path.exists(myuuid):
-				os.remove(myuuid) #remove the image when we're done with it
+				os.remove(myuuid)
 	if 'heh' in message.content.lower():
 		emoji = discordClient.get_emoji(int(os.getenv('HEH_EMOJI')))
 		await message.add_reaction(emoji)
@@ -1299,34 +1265,8 @@ async def on_voice_state_update(member, before, after):
                 await after.channel.send(f"<@{user_id}>, {member} just joined.")
 
 @discordClient.event
-async def on_raw_message_edit(payload):
-	message = payload.cached_message
-	if not message:
-		channel = discordClient.get_channel(payload.channel_id)
-		message = await channel.fetch_message(payload.message_id)
-	edited_message = payload.data['content']
-	bl = [row[0] for row in cursor.execute("SELECT hex FROM blacklist").fetchall()]
-	wl = [row[0] for row in cursor.execute("SELECT hex FROM whitelist").fetchall()]
-	for character in edited_message:
-		char = character.encode("utf-8").hex()
-		if (char in bl):
-			await message.delete()
-			return
-		if len(char) > 2 and len(char) < 8 and (char not in wl):
-			print("Deleted a suspicious message: " + message.content + ". The character found was: " + character + " with a hex code of: " + char)
-			await message.delete()
-			return
-
-	if re.search(aldi_regex, edited_message):
-		await message.delete()
-
-@discordClient.event
 async def on_reaction_add(reaction, user):
 	if user == discordClient.user:
-		return
-	bad_emoji = ["🇱", "🇦", "🇩", "🇮", "🅰️"]
-	if reaction.emoji in bad_emoji:
-		await reaction.clear()
 		return
 	if reaction.emoji == "👀" and user != discordClient.user:
 		users = await reaction.users().flatten()
@@ -1379,5 +1319,15 @@ async def on_member_update(before, after):
 async def on_member_remove(member):
 	channel = discordClient.get_channel(int(os.getenv('BEG_4_VBUCKS')))
 	await channel.send(f"{member} just left the server. https://tenor.com/view/thanos-fortnite-takethel-dance-gif-12100688")
+
+def send_stdout_to_discord(message):
+	message = message.strip()
+	if message:
+		channel = discordClient.get_channel(int(os.getenv('STDOUT')))
+		if channel:
+			asyncio.ensure_future(channel.send(message))
+
+sys.stdout.write = send_stdout_to_discord
+sys.stderr.write = send_stdout_to_discord
 
 discordClient.run(os.getenv('TOKEN'))
