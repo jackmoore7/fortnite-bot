@@ -46,24 +46,24 @@ def chatgpt_query(messages_list):
                 "required": ["prompt"],
             },
         },
-		{
-            "name": "get_fortnite_image",
-            "description": "Get the image of a Fortnite cosmetic by name. User must specify they are searching for an item from Fortnite. If return is null, say the item doesn't exist.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "The name of the Fortnite cosmetic.",
-                    },
-					"url": {
-						"type": "string",
-						"description": "The URL of the image to be included in followup message."
-					}
-                },
-                "required": ["name"],
-            },
-        },
+		# {
+        #     "name": "get_fortnite_image",
+        #     "description": "Get the image of a Fortnite cosmetic by name. User must specify they are searching for an item from Fortnite. If return is null, say the item doesn't exist.",
+        #     "parameters": {
+        #         "type": "object",
+        #         "properties": {
+        #             "name": {
+        #                 "type": "string",
+        #                 "description": "The name of the Fortnite cosmetic.",
+        #             },
+		# 			"url": {
+		# 				"type": "string",
+		# 				"description": "The URL of the image to be included in followup message."
+		# 			}
+        #         },
+        #         "required": ["name"],
+        #     },
+        # },
     ],
     function_call="auto"
 	)
@@ -71,7 +71,7 @@ def chatgpt_query(messages_list):
 	if response.get("function_call"):
 		available_functions = {
             "generate_dalle_image": dalle_prompt,
-	    	"get_fortnite_image": get_fortnite_image1
+	    	# "get_fortnite_image": get_fortnite_image1
         }
 		function_name = response["function_call"]["name"]
 		function_to_call = available_functions[function_name]

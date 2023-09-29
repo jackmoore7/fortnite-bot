@@ -53,9 +53,19 @@ tasks_list = {}
 
 aldi_regex = r'(?i)[a4@]\s*[il1\|]\s*d\s*[il1\|]'
 
+def timestampify(string):
+	date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S%z')
+	struct_time = date_time_obj.timetuple()
+	return f"<t:{int(mktime(struct_time))}:R>"
+
+def timestampify_z(string):
+	date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+	struct_time = date_time_obj.timetuple()
+	return f"<t:{int(mktime(struct_time))}:R>"
+
 @discordClient.event
 async def on_ready():
-	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="for <store>"))
+	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="me booty arrrr"))
 	fortnite_update_bg.start()
 	tv_show_update_bg.start()
 	fortnite_status_bg.start()
@@ -64,6 +74,7 @@ async def on_ready():
 	coles_specials_bg.start()
 	arpansa.start()
 	epic_free_games.start()
+	ozb_bangers.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -71,6 +82,8 @@ async def on_ready():
 	tasks_list["offers"] = fortnite_shop_offers
 	tasks_list["coles"] = coles_specials_bg
 	tasks_list["arpansa"] = arpansa
+	tasks_list['free_games'] = epic_free_games
+	tasks_list['ozb_bangers'] = ozb_bangers
 	print(f"{discordClient.user} is online! My PID is {os.getpid()}.")
 
 @tasks.loop(minutes=1)
@@ -82,7 +95,7 @@ async def fortnite_update_bg():
 		if current_version != response:
 			cursor.execute("UPDATE aes SET version = ?", (response,))
 			embed = discord.Embed(title="A new Fortnite update was just deployed")
-			embed.set_footer(text="Use /update to subscribe to notifications")
+			# embed.set_footer(text="Use /update to subscribe to notifications")
 			embed.add_field(name="Build", value=response, inline=False)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 	except Exception as e:
@@ -157,7 +170,7 @@ async def fortnite_status_bg():
 		if current_status != response:
 			cursor.execute("UPDATE server SET status = ?", (response,))
 			embed = discord.Embed(title = "Fortnite server status update")
-			embed.set_footer(text="Use /update to subscribe to notifications")
+			# embed.set_footer(text="Use /update to subscribe to notifications")
 			embed.add_field(name="Status", value=response)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 	except Exception as e:
@@ -284,10 +297,10 @@ async def fortnite_shop_update_v3():
 		else:
 			no_images.append(name)
 
-	def timestampify(string):
-		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
-		struct_time = date_time_obj.timetuple()
-		return f"<t:{int(mktime(struct_time))}:R>"
+	# def timestampify(string):
+	# 	date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+	# 	struct_time = date_time_obj.timetuple()
+	# 	return f"<t:{int(mktime(struct_time))}:R>"
 		
 
 	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
@@ -340,7 +353,7 @@ async def fortnite_shop_update_v3():
 				users = [u for i, u in ping_list if i == cosmetic]
 				for user in users:
 					await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
-			await channel.send(f"{item[1]} - Last seen {timestampify(item[2])}", file=discord.File(f'temp_images/{img}'))
+			await channel.send(f"{item[1]} - Last seen {timestampify_z(item[2])}", file=discord.File(f'temp_images/{img}'))
 			os.remove(f'temp_images/{img}')
 		await channel.send("## Featured")
 		for item in diff:
@@ -350,7 +363,7 @@ async def fortnite_shop_update_v3():
 				users = [u for i, u in ping_list if i == cosmetic]
 				for user in users:
 					await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
-			await channel.send(f"{item[1]} - Last seen {timestampify(item[2])}", file=discord.File(f'temp_images/{img}'))
+			await channel.send(f"{item[1]} - Last seen {timestampify_z(item[2])}", file=discord.File(f'temp_images/{img}'))
 			os.remove(f'temp_images/{img}')
 		if no_images:
 			await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
@@ -365,8 +378,9 @@ async def epic_free_games():
 	
 	ch = discordClient.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
 
-	def timestampify(string):
+	def timestampify_and_convert_to_aest(string):
 		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+		date_time_obj += timedelta(hours=10)
 		struct_time = date_time_obj.timetuple()
 		timestamp = f"<t:{int(mktime(struct_time))}:R>"
 		return timestamp
@@ -378,6 +392,12 @@ async def epic_free_games():
 			return True
 		else:
 			return False
+
+	def add_10h(string):
+		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+		date_time_obj += timedelta(hours=10)
+		new_string = date_time_obj.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+		return new_string
 
 	games_list = get_free_games()
 	existing_games_list = cursor.execute("SELECT * FROM free_games").fetchall()
@@ -395,10 +415,10 @@ async def epic_free_games():
 			embed.set_image(url=game[2])
 			embed.add_field(name="Title", value=game[0], inline=False)
 			embed.add_field(name="Description", value=game[1], inline=False)
-			embed.add_field(name="Starts", value=timestampify(game[3]))
-			embed.add_field(name="Ends", value=timestampify(game[4]))
+			embed.add_field(name="Starts", value=timestampify_and_convert_to_aest(game[3]))
+			embed.add_field(name="Ends", value=timestampify_and_convert_to_aest(game[4]))
 			await ch.send(embed=embed)
-			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], game[3]))
+			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], add_10h(game[3])))
 	else:
 		diff2 = [game for game in existing_games_list if game[1] not in (game[1] for game in games_list)]
 		if len(diff2) > 0:
@@ -474,7 +494,7 @@ async def arpansa():
 			if first_forecast_gte_3_item:
 				first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
 				embed.title = "Sun protection required today"
-				await ch.send(f"<@&{role}>")
+				# await ch.send(f"<@&{role}>")
 				embed.add_field(name="Time", value=f"{first_forecast_gte_3_item['Date'][-5:]} - {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
 				cursor.execute("UPDATE uv_times SET safe = 0")
 			else:
@@ -504,6 +524,41 @@ async def arpansa():
 		print(f"ARPANSA task encountered an exception: {e}")
 		await asyncio.sleep(60)
 		arpansa.restart()
+
+@tasks.loop(minutes=10)
+async def ozb_bangers():
+	try:
+		feed = feedparser.parse("https://www.ozbargain.com.au/deals/feed")
+		posted = cursor.execute("SELECT * FROM ozbargain").fetchall()
+		for post in feed['entries']:
+			upvotes = int(post['ozb_meta']['votes-pos'])
+			downvotes = int(post['ozb_meta']['votes-neg'])
+			if (upvotes >= 250 and downvotes < 10) and (post['link'] not in [x[0] for x in posted]):
+				try:
+					expiry = timestampify(post['ozb_meta']['expiry'])
+				except:
+					expiry = "Unknown"
+				try:
+					prefix = f"[{(post['ozb_title-msg']['type']).upper()}]"
+				except:
+					prefix = ''
+				title = post['title']
+				link = post['link']
+				upvote_emoji = discordClient.get_emoji(int(os.getenv('UPVOTE_EMOJI')))
+				downvote_emoji = discordClient.get_emoji(int(os.getenv('DOWNVOTE_EMOJI')))
+				ch = discordClient.get_channel(int(os.getenv('OZB_BANGERS_CHANNEL')))
+				embed = discord.Embed()
+				embed.title = f"{prefix} {title}"
+				embed.description = f"{upvote_emoji} {upvotes}\n{downvote_emoji} {downvotes}"
+				embed.set_image(url=post['ozb_meta']['image'])
+				embed.add_field(name="Link", value=link, inline=False)
+				embed.add_field(name="Expires", value=expiry, inline=False)
+				await ch.send(embed=embed)
+				cursor.execute("INSERT INTO ozbargain VALUES (?)", (link,))
+	except Exception as e:
+		print(f"ozb_bangers encountered an exception: {e}")
+		await asyncio.sleep(60)
+		ozb_bangers.restart()
 
 @discordClient.slash_command(description="Search a Coles item by name")
 async def search_coles_item(ctx, name):
