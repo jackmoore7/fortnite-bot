@@ -505,7 +505,7 @@ async def arpansa():
 		ch = discordClient.get_channel(int(os.getenv('UV_CHANNEL')))
 		role = os.getenv('SUNSCREEN_ROLE')
 		current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
-		current_time = dt.now(pytz.timezone('Australia/Sydney')).strftime('%H:%M')
+		current_time = (dt.now(pytz.timezone('Australia/Sydney'))-timedelta(minutes=1)).strftime('%H:%M')
 		db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
 		data = get_arpansa_data()
 		current_uv = float(data['CurrentUVIndex'])
@@ -537,7 +537,7 @@ async def arpansa():
 
 		msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
 		emb = msg.embeds[0]
-		emb.set_field_at(-1, name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}")
+		emb.set_field_at(-1, name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv} at {current_time}")
 		emb.set_field_at(-2, name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
 		emb.color = discord.Color(calculate_hex(current_uv))
 		await msg.edit(embed=emb)
