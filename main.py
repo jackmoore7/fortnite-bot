@@ -25,6 +25,7 @@ import faulthandler, signal
 from PIL import Image
 import json
 import traceback
+from bs4 import BeautifulSoup
 
 faulthandler.enable(file=open('error.log', 'w'))
 faulthandler.register(signal.SIGUSR1.value)
@@ -75,6 +76,7 @@ async def on_ready():
 	arpansa.start()
 	epic_free_games.start()
 	ozb_bangers.start()
+	gog_free_games.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -427,6 +429,31 @@ async def epic_free_games():
 				cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
 
 @tasks.loop(minutes=60)
+async def gog_free_games():
+	ch = discordClient.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
+	posted = cursor.execute("SELECT * FROM gog_free_games").fetchall()
+	r = requests.get("https://www.gog.com/")
+	soup = BeautifulSoup(r.content, 'html.parser')
+	giveaway = soup.find('a', {'id': 'giveaway'})
+	if giveaway:
+		href = giveaway.get('ng-href')
+		url = f"https://gog.com{href}"
+		if url not in [x[0] for x in posted]:
+			timestamp = giveaway.find_next('div', {'class': 'giveaway-banner--with-consent__content'}).find('div', {'class': 'giveaway-banner__footer'}).find('gog-countdown-timer')
+			if timestamp:
+				timestamp = f"<t:{int(timestamp['end-date'])//1000}:R>"
+			else:
+				timestamp = "Unknown"
+			embed = discord.Embed()
+			embed.title = "New free game on GOG"
+			embed.description = url
+			embed.add_field(name="Ends", value=timestamp)
+			await ch.send(f"<@&{os.getenv('FREE_GAMES_ROLE')}>", embed=embed)
+			cursor.execute("INSERT INTO gog_free_games VALUES (?)", (url,))
+	else:
+		cursor.execute("DELETE FROM gog_free_games")
+
+@tasks.loop(minutes=60)
 async def fortnite_shop_offers():
 	try:
 		today_offers = get_fortnite_shop_offers()
@@ -478,6 +505,7 @@ async def arpansa():
 		ch = discordClient.get_channel(int(os.getenv('UV_CHANNEL')))
 		role = os.getenv('SUNSCREEN_ROLE')
 		current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
+		current_time = dt.now(pytz.timezone('Australia/Sydney')).strftime('%H:%M')
 		db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
 		data = get_arpansa_data()
 		current_uv = float(data['CurrentUVIndex'])
@@ -502,7 +530,7 @@ async def arpansa():
 				cursor.execute("UPDATE uv_times SET safe = 1")
 			embed.add_field(name="Maximum UV (Forecast)", value=f"{calculate_emoji(max_uv_today_forecast)} {max_uv_today_forecast} at {max_uv_today_forecast_time}", inline=False)
 			embed.add_field(name="Maximum UV (Recorded)", value=f"{calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
-			embed.add_field(name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv}", inline=False)
+			embed.add_field(name="Current UV", value=f"{calculate_emoji(current_uv)} {current_uv} at {current_time}", inline=False)
 			msg = await ch.send(embed=embed)
 			cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
 			cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
@@ -1178,50 +1206,55 @@ async def on_message(message):
 	if message.author == discordClient.user:
 		return
 	if discordClient.user in message.mentions:
-		async with message.channel.typing():
-			try:
-				id = 0
-				messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
-				prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
-				if messages_row:
-					messages_list = json.loads(messages_row[0])
-				else:
-					print("we're starting the list again.")
-					messages_list = []
-					initial_message = {"role": "system", "content": prompt}
-					messages_list.append(initial_message)
-					dumped = json.dumps(messages_list)
-					cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, dumped))
-				new_message = {"role": "user", "content": str(message.content)}
-				print(f"message content: {message.content}")
-				messages_list.append(new_message)
-				response = chatgpt_query(messages_list)
-				messages_list.append(response.choices[0].message)
-				print(f"messages list: {messages_list}")
-				updated_messages_list = json.dumps(messages_list)
-				cursor.execute("UPDATE chatgpt SET messages = ? WHERE id = ?", (updated_messages_list, id))
-				total_tokens = response.usage.total_tokens
-				cost = (total_tokens/1000) * 0.00175
-				response_content = response.choices[0].message.content
-				if len(response_content) >= 2000:
-					print("message is too long, let's split it up")
-					response_list = []
-					offset = 0
-					while offset < len(response_content):
-						chunk = response_content[offset:offset+2000]
-						reversed_chunk = chunk[::-1]
-						length = reversed_chunk.find("\n")
-						chunk = chunk[:2000 - length]
-						offset += 2000 - length
-						response_list.append(chunk)
-					await message.reply(response_list[0], mention_author=False)
-					for msg in response_list[1:]:
-						await message.channel.send(msg)
-				else:
-					msg = await message.reply(response_content, mention_author=False)
-					cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-			except Exception as e:
-				await message.reply(e, mention_author=False)
+		await message.channel.trigger_typing()
+		try:
+			id = 0
+			messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
+			prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
+			if messages_row:
+				messages_list = json.loads(messages_row[0])
+			else:
+				print("we're starting the list again.")
+				messages_list = []
+				initial_message = {"role": "system", "content": prompt}
+				messages_list.append(initial_message)
+				dumped = json.dumps(messages_list)
+				cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, dumped))
+			new_message = {"role": "user", "content": str(message.content)}
+			print(f"message content: {message.content}")
+			messages_list.append(new_message)
+			#response = chatgpt_query(messages_list)
+			response = await asyncio.wait_for(chatgpt_query(messages_list), timeout=40)
+			messages_list.append(response.choices[0].message)
+			print(f"messages list: {messages_list}")
+			updated_messages_list = json.dumps(messages_list)
+			cursor.execute("UPDATE chatgpt SET messages = ? WHERE id = ?", (updated_messages_list, id))
+			total_tokens = response.usage.total_tokens
+			cost = (total_tokens/1000) * 0.00175
+			response_content = response.choices[0].message.content
+			if len(response_content) >= 2000:
+				print("message is too long, let's split it up")
+				response_list = []
+				offset = 0
+				while offset < len(response_content):
+					chunk = response_content[offset:offset+2000]
+					reversed_chunk = chunk[::-1]
+					length = reversed_chunk.find("\n")
+					chunk = chunk[:2000 - length]
+					offset += 2000 - length
+					response_list.append(chunk)
+				await message.reply(response_list[0], mention_author=False)
+				for msg in response_list[1:]:
+					await message.channel.send(msg)
+				await message.channel.trigger_typing()
+			else:
+				await message.channel.trigger_typing()
+				msg = await message.reply(response_content, mention_author=False)
+				cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
+		except asyncio.TimeoutError:
+			await message.reply("API call timed out. Please try again.", mention_author=False)
+		except Exception as e:
+			await message.reply(e, mention_author=False)
 
 	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
 	if urls:

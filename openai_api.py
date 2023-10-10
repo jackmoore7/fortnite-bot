@@ -20,11 +20,11 @@ def upload_image_to_s3(image_data, bucket_name, object_key):
     s3.upload_fileobj(io.BytesIO(image_data), bucket_name, object_key, ExtraArgs={"ContentType": "image/png"})
     print("Image uploaded to S3 successfully!")
 
-def chatgpt_query(messages_list):
+async def chatgpt_query(messages_list):
 	print(f"messages list length: {len(messages_list)}")
 	while len(messages_list) > 5:
 		messages_list.pop(1)
-	completion = openai.ChatCompletion.create(
+	completion = await openai.ChatCompletion.acreate(
 	model="gpt-3.5-turbo",
 	messages=messages_list,
 	functions = [
@@ -40,7 +40,7 @@ def chatgpt_query(messages_list):
                     },
 					"url": {
 						"type": "string",
-						"descrription": "The URL of the image to be included in followup message."
+						"description": "The URL of the image to be included in followup message."
 					}
                 },
                 "required": ["prompt"],
@@ -67,6 +67,7 @@ def chatgpt_query(messages_list):
     ],
     function_call="auto"
 	)
+	print(completion)
 	response = completion.choices[0].message
 	if response.get("function_call"):
 		available_functions = {
