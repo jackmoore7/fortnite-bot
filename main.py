@@ -26,6 +26,15 @@ from PIL import Image
 import json
 import traceback
 from bs4 import BeautifulSoup
+import logging
+from systemd.journal import JournalHandler
+
+log = logging.getLogger('demo')
+log.addHandler(JournalHandler())
+log.setLevel(logging.INFO)
+log.info('sent to journal')
+
+logging.basicConfig(level=logging.INFO)
 
 faulthandler.enable(file=open('error.log', 'w'))
 faulthandler.register(signal.SIGUSR1.value)
@@ -88,7 +97,7 @@ async def on_ready():
 	tasks_list['ozb_bangers'] = ozb_bangers
 	print(f"{discordClient.user} is online! My PID is {os.getpid()}.")
 
-@tasks.loop(minutes=1)
+@tasks.loop(minutes=5)
 async def fortnite_update_bg():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
@@ -163,7 +172,7 @@ async def coles_specials_bg():
 		await asyncio.sleep(10800)
 		coles_specials_bg.restart()
 
-@tasks.loop(minutes=3)
+@tasks.loop(minutes=5)
 async def fortnite_status_bg():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('UPD8_CHANNEL')))
@@ -180,7 +189,7 @@ async def fortnite_status_bg():
 		await asyncio.sleep(180)
 		fortnite_status_bg.restart()
 
-@tasks.loop(minutes=5)
+@tasks.loop(minutes=10)
 async def fortnite_shop_update_v2():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
@@ -211,30 +220,33 @@ async def fortnite_shop_update_v2():
 			for item in diff:
 				if item[0]:
 					newuuid = str(uuid.uuid4())
-					img = urllib.request.urlopen(item[0])
-					img_data = img.read()
-					img_type = imghdr.what(None, h=img_data)
-					if img_type:
-						max_retries = 5
-						for attempt in range(max_retries):
-							try:
-								with open(f'temp_images/{newuuid}.{img_type}', "wb") as f:
-									f.write(img_data)
-								image = Image.open(f'temp_images/{newuuid}.{img_type}')
-								image.verify()
-								print(f"{newuuid} was successfully downloaded and verified")
-								break
-							except Exception as e:
-								print(f"Broken image detected: {e}")
-								os.remove(f'temp_images/{newuuid}.{img_type}')
-								if attempt < max_retries - 1:
-									print(f"Retrying ({attempt + 1}/{max_retries})...")
-									await asyncio.sleep(2)
-								else:
-									print(f"Max retries reached, failed to download {newuuid}")
-									no_images.append(item[1])
+					try:
+						img = urllib.request.urlopen(item[0])
+						img_data = img.read()
+						img_type = imghdr.what(None, h=img_data)
+						if img_type:
+							max_retries = 5
+							for attempt in range(max_retries):
+								try:
+									with open(f'temp_images/{newuuid}.{img_type}', "wb") as f:
+										f.write(img_data)
+									image = Image.open(f'temp_images/{newuuid}.{img_type}')
+									image.verify()
+									print(f"{newuuid} was successfully downloaded and verified")
 									break
-					else:
+								except Exception as e:
+									print(f"Broken image detected: {e}")
+									os.remove(f'temp_images/{newuuid}.{img_type}')
+									if attempt < max_retries - 1:
+										print(f"Retrying ({attempt + 1}/{max_retries})...")
+										await asyncio.sleep(2)
+									else:
+										print(f"Max retries reached, failed to download {newuuid}")
+										no_images.append(item[1])
+										break
+						else:
+							no_images.append(item[1])
+					except urllib.error.HTTPError:
 						no_images.append(item[1])
 				else:
 					no_images.append(item[1])
@@ -1414,6 +1426,21 @@ def send_stdout_to_discord(message):
 		channel = discordClient.get_channel(int(os.getenv('STDOUT')))
 		if channel:
 			asyncio.ensure_future(channel.send(message))
+
+def send_stdout_to_discord(message):
+    message = message.strip()
+
+    if message:
+        channel = discordClient.get_channel(int(os.getenv('STDOUT')))
+        
+        if channel:
+            if len(message) > 2000:
+                chunks = [message[i:i+2000] for i in range(0, len(message), 2000)]
+                
+                for chunk in chunks:
+                    asyncio.ensure_future(channel.send(chunk))
+            else:
+                asyncio.ensure_future(channel.send(message))
 
 sys.stdout.write = send_stdout_to_discord
 sys.stderr.write = send_stdout_to_discord
