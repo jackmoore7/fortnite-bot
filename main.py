@@ -77,8 +77,8 @@ def embed_tweets(message):
 	fx = 'fxtwitter'
 	fixup = 'fixupx'
 
-	tweets = re.compile(r'^https?:\/\/(?:www\.)?(twitter)\.com\/(?:#!\/)?(\w+)\/status(?:es)?\/(\d+)$')
-	xeets = re.compile(r'^https?:\/\/(www\.)?(x)\.com\/[A-Za-z0-9_]{1,15}\/status\/[0-9]{18,}$')
+	tweets = re.compile(r'https?:\/\/(?:www\.)?(twitter)\.com\/(?:#!\/)?(\w+)\/status(?:es)?\/(\d+)')
+	xeets = re.compile(r'https?:\/\/(www\.)?(x)\.com\/[A-Za-z0-9_]{1,15}\/status\/[0-9]{18,}')
 
 	match1 = tweets.search(message.content)
 	match2 = xeets.search(message.content)
@@ -167,7 +167,6 @@ async def tv_show_update_bg():
 @tasks.loop(minutes=180)
 async def coles_specials_bg():
 	try:
-		# user = discordClient.get_user(int(os.getenv('ME')))
 		channel = discordClient.get_channel(int(os.getenv('COLES_SPECIALS_CHANNEL')))
 		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
 		for product in items:
@@ -175,35 +174,29 @@ async def coles_specials_bg():
 			if isinstance(special_status, tuple):
 				if product[6] != special_status[6]:
 					if special_status[6]:
-						# await user.send(f"{product[2]} {product[1]} is now available for purchase.")
 						await channel.send(f"{product[2]} {product[1]} is now available for purchase.")
 					else:
-						# await user.send(f"{product[2]} {product[1]} is no longer available for purchase.")
 						await channel.send(f"{product[2]} {product[1]} is no longer available for purchase.")
 					cursor.execute("UPDATE coles_specials SET available = ? WHERE id = ?", (special_status[6], product[0]))
-				# if product[5] != special_status[5]:
-				# 	if special_status[5]:
-				# 		cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
-				# 		# await user.send(f"{product[2]} {product[1]} is on sale for ${special_status[4]}!")
-				# 		await channel.send(f"{product[2]} {product[1]} is on sale for ${special_status[4]}!")
-				# 	else:
-				# 		cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
-				# 		# await user.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${special_status[4]}")
-				# 		await channel.send(f"{product[2]} {product[1]} is no longer on sale and back to its usual price of ${special_status[4]}")
+				if product[5] != special_status[5]:
+					if special_status[5]:
+						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
+						if product[4] == special_status[4]:
+							await channel.send(f"{product[2]} {product[1]} is on special: {special_status[6]}")
+					else:
+						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
+						if product[4] == special_status[4]:
+							await channel.send(f"{product[2]} {product[1]} is no longer on special.")
 				if (product[4] != special_status[4]):
 					cursor.execute("UPDATE coles_specials SET current_price = ? WHERE id = ?", (special_status[4], product[0]))
 					if product[4] > special_status[4]:
-						# await user.send(f"The price of {product[2]} {product[1]} was reduced from ${product[4]} to ${special_status[4]}")
 						await channel.send(f"The price of {product[2]} {product[1]} was reduced from ${product[4]} to ${special_status[4]} (-{percentage_change(product[4], special_status[4])}%)")
 					else:
-						# await user.send(f"The price of {product[2]} {product[1]} was increased from ${product[4]} to ${special_status[4]}")
 						await channel.send(f"The price of {product[2]} {product[1]} was increased from ${product[4]} to ${special_status[4]} (+{percentage_change(product[4], special_status[4])}%)")
 			else:
 				if special_status == "nah":
-					# await user.send(f"{product[2]} {product[1]} returned a 404. It may no longer be available.")
 					await channel.send(f"{product[2]} {product[1]} returned a 404. It may no longer be available.")
 	except Exception as e:
-		# await user.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
 		await asyncio.sleep(10800)
 		coles_specials_bg.restart()

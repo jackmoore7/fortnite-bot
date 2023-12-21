@@ -47,7 +47,11 @@ def get_item_by_id(id):
         else:
             on_sale = False
         available = r['pageProps']['product']['availability']
-        return (id, name, brand, description, current_price, on_sale, available)
+        if r.get('pageProps') and r['pageProps'].get('product') and r['pageProps']['product'].get('pricing') and r['pageProps']['product']['pricing'].get('offerDescription'):
+            offer_description = r['pageProps']['product']['pricing']['offerDescription']
+        else:
+            offer_description = ""
+        return (id, name, brand, description, current_price, on_sale, available, offer_description)
     
 def search_item(query):
     query = urllib.parse.quote(query)
