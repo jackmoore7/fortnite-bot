@@ -182,7 +182,7 @@ async def coles_specials_bg():
 					if special_status[5]:
 						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
 						if product[4] == special_status[4]:
-							await channel.send(f"{product[2]} {product[1]} is on special: {special_status[6]}")
+							await channel.send(f"{product[2]} {product[1]} is on special: {special_status[6]} - reducing the unit price from ${special_status[4]} to ${special_status[7]} (-{percentage_change(special_status[4], special_status[7])})")
 					else:
 						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
 						if product[4] == special_status[4]:
