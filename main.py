@@ -181,8 +181,8 @@ async def coles_specials_bg():
 				if product[5] != special_status[5]:
 					if special_status[5]:
 						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
-						if product[4] == special_status[4]:
-							await channel.send(f"{product[2]} {product[1]} is on special: {special_status[6]} - reducing the unit price from ${special_status[4]} to ${special_status[7]} (-{percentage_change(special_status[4], special_status[7])})")
+						if (product[4] == special_status[4]) and special_status[7] and special_status[8]:
+							await channel.send(f"{product[2]} {product[1]} is on special: {special_status[7]} - reduces the price per unit from ${special_status[4]} to ${special_status[8]} ({percentage_change(special_status[4], special_status[8])}%)")
 					else:
 						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
 						if product[4] == special_status[4]:
@@ -190,7 +190,7 @@ async def coles_specials_bg():
 				if (product[4] != special_status[4]):
 					cursor.execute("UPDATE coles_specials SET current_price = ? WHERE id = ?", (special_status[4], product[0]))
 					if product[4] > special_status[4]:
-						await channel.send(f"The price of {product[2]} {product[1]} was reduced from ${product[4]} to ${special_status[4]} (-{percentage_change(product[4], special_status[4])}%)")
+						await channel.send(f"The price of {product[2]} {product[1]} was reduced from ${product[4]} to ${special_status[4]} ({percentage_change(product[4], special_status[4])}%)")
 					else:
 						await channel.send(f"The price of {product[2]} {product[1]} was increased from ${product[4]} to ${special_status[4]} (+{percentage_change(product[4], special_status[4])}%)")
 			else:
@@ -422,37 +422,41 @@ async def epic_free_games():
 	ch = discordClient.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
 
 	def timestampify_and_convert_to_aest(string):
+		utc_timezone = pytz.timezone('UTC')
+		sydney_timezone = pytz.timezone('Australia/Sydney')
 		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
-		date_time_obj += timedelta(hours=10)
-		struct_time = date_time_obj.timetuple()
+		date_time_obj = utc_timezone.localize(date_time_obj)
+		sydney_time = date_time_obj.astimezone(sydney_timezone)
+		struct_time = sydney_time.timetuple()
 		timestamp = f"<t:{int(mktime(struct_time))}:R>"
 		return timestamp
 
 	def test_time(string):
-		start_dt = dt.fromisoformat(string[:-1])
-		current_dt = dt.utcnow()
-		if current_dt >= start_dt:
+		sydney_timezone = pytz.timezone('Australia/Sydney')
+		end_dt = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+		end_dt = sydney_timezone.localize(end_dt)
+		current_dt = dt.now(sydney_timezone)
+		if current_dt > end_dt:
 			return True
 		else:
 			return False
-
-	def add_10h(string):
+		
+	def convert_to_aest(string):
+		utc_timezone = pytz.timezone('UTC')
+		sydney_timezone = pytz.timezone('Australia/Sydney')
 		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
-		date_time_obj += timedelta(hours=10)
-		new_string = date_time_obj.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+		date_time_obj = utc_timezone.localize(date_time_obj)
+		sydney_time = date_time_obj.astimezone(sydney_timezone)
+		new_string = sydney_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 		return new_string
 
 	games_list = get_free_games()
-	existing_games_list = cursor.execute("SELECT * FROM free_games").fetchall()
-	for game in existing_games_list:
-		if test_time(game[3]):
-			await ch.send(f"<@&{os.getenv('FREE_GAMES_ROLE')}>, {game[0]} is available to claim right now!")
-			cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
-	diff = [game for game in games_list if game[0] not in (game[0] for game in existing_games_list)]
+	posted = cursor.execute("SELECT * FROM free_games").fetchall()
+
+	diff = [game for game in games_list if game[0] not in [posted_game[0] for posted_game in posted]]
+
 	if len(diff) > 0:
 		for game in diff:
-			if test_time(game[3]):
-				pass
 			embed = discord.Embed()
 			embed.title = "New free game on the Epic Games store"
 			embed.set_image(url=game[2])
@@ -460,14 +464,13 @@ async def epic_free_games():
 			embed.add_field(name="Description", value=game[1], inline=False)
 			embed.add_field(name="Starts", value=timestampify_and_convert_to_aest(game[3]))
 			embed.add_field(name="Ends", value=timestampify_and_convert_to_aest(game[4]))
-			await ch.send(embed=embed)
-			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], add_10h(game[3])))
-	else:
-		diff2 = [game for game in existing_games_list if game[1] not in (game[1] for game in games_list)]
-		if len(diff2) > 0:
-			for game in diff2:
-				print(f"Promotional period ended for {game[0]}")
-				cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
+			await ch.send(f"<@&{os.getenv('FREE_GAMES_ROLE')}>", embed=embed)
+			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], convert_to_aest(game[3])))
+	
+	for game in posted:
+		if test_time(game[3]):
+			cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
+			print(f"{game[0]} was deleted from the free_games database as the promotional period has ended.")
 
 @tasks.loop(minutes=60)
 async def gog_free_games():
