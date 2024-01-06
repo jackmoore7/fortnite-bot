@@ -184,6 +184,6 @@ def get_free_games():
                     start_date = game['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['startDate']
                     end_date = game['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['endDate']
                     games_list.append((title, description, image_url[0], start_date, end_date))
-            return games_list
+        return games_list
     else:
         return None

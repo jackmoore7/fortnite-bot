@@ -50,6 +50,7 @@ from epic_api import *
 from coles import *
 from uv import *
 from openai_api import *
+from lego_api import *
 
 intents = discord.Intents.all()
 intents.members = True
@@ -113,6 +114,7 @@ async def on_ready():
 	epic_free_games.start()
 	ozb_bangers.start()
 	gog_free_games.start()
+	lego_bg.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -122,6 +124,7 @@ async def on_ready():
 	tasks_list["arpansa"] = arpansa
 	tasks_list['free_games'] = epic_free_games
 	tasks_list['ozb_bangers'] = ozb_bangers
+	tasks_list['lego'] = lego_bg
 	print(f"{discordClient.user} is online! My PID is {os.getpid()}.")
 
 @tasks.loop(minutes=5)
@@ -200,6 +203,49 @@ async def coles_specials_bg():
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
 		await asyncio.sleep(10800)
 		coles_specials_bg.restart()
+
+@tasks.loop(minutes=30)
+async def lego_bg():
+	try:
+		channel = discordClient.get_channel(int(os.getenv('LEGO_CHANNEL')))
+		product_url = 'https://www.lego.com/en-au/product/'
+		items_old = cursor.execute("SELECT * FROM lego").fetchall()
+		items_new = []
+		for item in items_old:
+			result = get_lego_item_by_id(item[0])
+			if result:
+				result = result['data']['product']
+				id = int(result['productCode'])
+				name = result['name']
+				image_url = result['baseImgUrl']
+				slug = result['slug']
+				availability = result['variant']['attributes']['availabilityText']
+				on_sale = result['variant']['attributes']['onSale']
+				price = result['variant']['price']['formattedAmount']
+				items_new.append((id, name, image_url, slug, availability, on_sale, price))
+
+		if items_old != items_new:
+			for item in items_new:
+				cursor.execute("UPDATE lego SET name = ?, image_url = ?, slug = ?, availability = ?, on_sale = ?, price = ? WHERE id = ?", (item[1], item[2], item[3], item[4], item[5], item[6], item[0]))
+			await channel.send("Items you're tracking were updated")
+
+		for item1, item2 in zip(items_old, items_new):
+			differences_exist = any(old_value != new_value for old_value, new_value in zip(item1[3:], item2[3:]))
+
+			if differences_exist:
+				embed = discord.Embed(title=item2[1], url=product_url + item2[3])
+				embed.set_thumbnail(url=item2[2])
+
+				field_names = ['Availability', 'On sale', 'Price']
+
+				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
+					field_value = f"~~{old_value}~~\n{new_value}" if old_value != new_value else new_value
+					embed.add_field(name=name, value=field_value, inline=False)
+
+				await channel.send(embed=embed)
+
+	except Exception as e:
+		print(f"Exception: {e}")
 
 @tasks.loop(minutes=5)
 async def fortnite_status_bg():
@@ -465,7 +511,7 @@ async def epic_free_games():
 			embed.add_field(name="Starts", value=timestampify_and_convert_to_aest(game[3]))
 			embed.add_field(name="Ends", value=timestampify_and_convert_to_aest(game[4]))
 			await ch.send(f"<@&{os.getenv('FREE_GAMES_ROLE')}>", embed=embed)
-			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], convert_to_aest(game[3])))
+			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], convert_to_aest(game[4])))
 	
 	for game in posted:
 		if test_time(game[3]):
@@ -1037,6 +1083,65 @@ async def die(ctx):
 		return
 	await ctx.respond("Death request received 🫡")
 	await discordClient.close()
+
+@discordClient.slash_command()
+async def search_lego_item(ctx, string, page):
+	product_url = 'https://www.lego.com/en-au/product/'
+	products = search_item(string, page)
+	pages = []
+	results = products['results']
+	num_results = products['total']
+	for item in results:
+		embed = discord.Embed(
+			title=item['name'],
+			url=product_url + item['slug']
+		)
+		embed.set_image(url=item['baseImgUrl'])
+		embed.add_field(name="Price", value=item['variant']['price']['formattedAmount'], inline=True)
+		embed.add_field(name="Availability", value=item['variant']['attributes']['availabilityText'])
+		embed.set_footer(text=f"Returned {num_results} results")
+		pages.append(Page(content=item['name'], embeds=[embed]))
+	paginator = Paginator(pages=pages)
+	await paginator.respond(ctx.interaction)
+
+lego = discordClient.create_group("lego", "Edit your tracked items list")
+
+@lego.command(description="Add or remove an item")
+async def edit(ctx, id):
+	await ctx.defer()
+	result = get_lego_item_by_id(id)
+	result = result['data']['product']
+	if result:
+		name = result['name']
+		image_url = result['baseImgUrl']
+		slug = result['slug']
+		availability = result['variant']['attributes']['availabilityText']
+		on_sale = result['variant']['attributes']['onSale']
+		price = result['variant']['price']['formattedAmount']
+		result_db = cursor.execute("SELECT * FROM lego WHERE id = ?", (id,)).fetchone()
+		if result_db:
+			cursor.execute("DELETE FROM lego WHERE id = ?", (id,)).fetchone()
+			await ctx.respond(f"Removed {name} from your list")
+		else:
+			cursor.execute("INSERT INTO lego VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, image_url, slug, availability, on_sale, price))
+			await ctx.respond(f"Added {name} to your list")
+	else:
+		await ctx.respond(f"{id} didn't return any results :(")
+
+@lego.command(description="View your tracked items")
+async def list(ctx):
+	tracked = cursor.execute("SELECT * FROM lego")
+	embed = discord.Embed(title = "Items you're tracking")
+	for item in tracked:
+		id = item[0]
+		name = item[1]
+		availability = item[4]
+		on_sale = item[5]
+		price = item[6]
+		compact_info = f"**Name**: {name}\n**Price**: {price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {availability}"
+		embed.add_field(name=f"{id} - {name}", value=compact_info, inline=False)
+	await ctx.respond(embed=embed)
+	
 
 # @discordClient.slash_command(description="Ask ChatGPT a question (GPT-3.5-turbo, conversational)")
 # async def chatgpt(ctx, message):
