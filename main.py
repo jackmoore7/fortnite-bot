@@ -28,6 +28,9 @@ import traceback
 from bs4 import BeautifulSoup
 import logging
 from systemd.journal import JournalHandler
+import heartrate
+
+heartrate.trace(browser=True, host='0.0.0.0')
 
 log = logging.getLogger('demo')
 log.addHandler(JournalHandler())
@@ -51,6 +54,7 @@ from coles import *
 from uv import *
 from openai_api import *
 from lego_api import *
+from ephemeral_port import *
 
 intents = discord.Intents.all()
 intents.members = True
@@ -197,8 +201,7 @@ async def coles_specials_bg():
 					else:
 						await channel.send(f"The price of {product[2]} {product[1]} was increased from ${product[4]} to ${special_status[4]} (+{percentage_change(product[4], special_status[4])}%)")
 			else:
-				if special_status == "nah":
-					await channel.send(f"{product[2]} {product[1]} returned a 404. It may no longer be available.")
+				await channel.send(special_status)
 	except Exception as e:
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
 		await asyncio.sleep(10800)
@@ -678,57 +681,57 @@ async def ozb_bangers():
 		await asyncio.sleep(60)
 		ozb_bangers.restart()
 
-@discordClient.slash_command(description="Search a Coles item by name")
-async def search_coles_item(ctx, name):
+coles = discordClient.create_group("coles", "Edit your tracked items list")
+
+@coles.command(description="Search a Coles item by name")
+async def search(ctx, string):
 	await ctx.defer()
-	try:
-		result = search_item(name)
-		if result[0] == 0:
-			await ctx.respond("No results")
-			return
-		list_str = "```" + "\n".join([f"{i}. {item[1]} ({item[2]}) - ID: {item[0]}" for i, item in enumerate(result[1:], start=1)]) + "```"
-		response = f"{list_str}"
-		await ctx.respond(response)
-	except discord.errors.HTTPException as e:
-		if "Must be 2000 or fewer in length." in str(e):
-			await ctx.respond(f"Your search returned {result[0]} results. Please make your search term more specific.")
+	results = search_item(string)
+	if results:
+		url = "https://productimages.coles.com.au/productimages"
+		num_results = results['noOfResults']
+		results = results['results']
+		results_list = [(product['id'], product['name'], product['brand'], product['imageUris'][0]['uri']) for product in results if ('adId' not in product or not product['adId']) and 'id' in product]
+		pages = []
+		for item in results_list:
+			embed = discord.Embed(
+				title = f"{item[2]} {item[1]}"
+			)
+			embed.set_image(url=url + item[3])
+			embed.add_field(name="ID", value=item[0])
+			embed.set_footer(text=f"Returned {num_results} results")
+			pages.append(Page(content=f"{item[2]} {item[1]}", embeds=[embed]))
+		paginator = Paginator(pages=pages)
+		await paginator.respond(ctx.interaction)
+	else:
+		await ctx.respond("Something went wrong. Please try again.")
 
-coles_list = discordClient.create_group("coles_list", "Edit your tracked items list")
-
-class MyView(discord.ui.View):
-
-	def __init__(self, item_id):
-		super().__init__()
-		self.item_id = item_id
-
-	@discord.ui.button(label="Yes, delete", row=0, style=discord.ButtonStyle.danger)
-	async def first_button_callback(self, button, interaction):
-		self.disable_all_items()
-		try:
-			cursor.execute("DELETE FROM coles_specials WHERE id = ?", (self.item_id,))
-			button.label = "Item deleted"
-		except Exception as e:
-			button.label = f"Couldn't delete item: {e}"
-		await interaction.response.edit_message(view=self)
-
-	@discord.ui.button(label="No, keep", row=0, style=discord.ButtonStyle.primary)
-	async def second_button_callback(self, button, interaction):
-		self.disable_all_items()
-		button.label = "Kept!"
-		await interaction.response.edit_message(view=self)
-
-@coles_list.command(description="Add or remove an item")
+@coles.command(description="Add or remove an item")
 async def edit(ctx, id):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")
 	else:
-		result = add_item_to_db_by_id(id)
-		if "already" in result:
-			await ctx.respond(result, view=MyView(item_id=id))
+		await ctx.defer()
+		result = get_item_by_id(id)
+		if result:
+			id = result[0]
+			name = result[1]
+			brand = result[2]
+			description = result[3]
+			current_price = result[4]
+			on_sale = result[5]
+			available = result[6]
+			result_db = cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (id,)).fetchone()
+			if result_db:
+				cursor.execute("DELETE FROM coles_specials WHERE id = ?", (id,))
+				await ctx.respond(f"Removed {brand} {name} from your list")
+			else:
+				cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, brand, description, current_price, on_sale, available))
+				await ctx.respond(f"Added {brand} {name} to your list")
 		else:
 			await ctx.respond(result)
 
-@coles_list.command(description="View your tracked items")
+@coles.command(description="View your tracked items")
 async def list(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")
@@ -1082,29 +1085,33 @@ async def die(ctx):
 		await ctx.respond("nice try bozo")
 		return
 	await ctx.respond("Death request received 🫡")
+	os.kill(int(os.getpid()), signal.SIGKILL)
 	await discordClient.close()
 
-@discordClient.slash_command()
-async def search_lego_item(ctx, string, page):
-	product_url = 'https://www.lego.com/en-au/product/'
-	products = search_item(string, page)
-	pages = []
-	results = products['results']
-	num_results = products['total']
-	for item in results:
-		embed = discord.Embed(
-			title=item['name'],
-			url=product_url + item['slug']
-		)
-		embed.set_image(url=item['baseImgUrl'])
-		embed.add_field(name="Price", value=item['variant']['price']['formattedAmount'], inline=True)
-		embed.add_field(name="Availability", value=item['variant']['attributes']['availabilityText'])
-		embed.set_footer(text=f"Returned {num_results} results")
-		pages.append(Page(content=item['name'], embeds=[embed]))
-	paginator = Paginator(pages=pages)
-	await paginator.respond(ctx.interaction)
+lego = discordClient.create_group("lego")
 
-lego = discordClient.create_group("lego", "Edit your tracked items list")
+@lego.command(description="Search a Lego item")
+async def search(ctx, string):
+	product_url = 'https://www.lego.com/en-au/product/'
+	products = search_lego_item(string)
+	if products:
+		pages = []
+		num_results = products['total']
+		results = products['results']
+		for item in results:
+			embed = discord.Embed(
+				title=item['name'],
+				url=product_url + item['slug']
+			)
+			embed.set_image(url=item['baseImgUrl'])
+			embed.add_field(name="Price", value=item['variant']['price']['formattedAmount'], inline=True)
+			embed.add_field(name="Availability", value=item['variant']['attributes']['availabilityText'])
+			embed.set_footer(text=f"Returned {num_results} results")
+			pages.append(Page(content=item['name'], embeds=[embed]))
+		paginator = Paginator(pages=pages)
+		await paginator.respond(ctx.interaction)
+	else:
+		await ctx.respond("Something went wrong. Please try again.")
 
 @lego.command(description="Add or remove an item")
 async def edit(ctx, id):
@@ -1141,34 +1148,12 @@ async def list(ctx):
 		compact_info = f"**Name**: {name}\n**Price**: {price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {availability}"
 		embed.add_field(name=f"{id} - {name}", value=compact_info, inline=False)
 	await ctx.respond(embed=embed)
-	
 
-# @discordClient.slash_command(description="Ask ChatGPT a question (GPT-3.5-turbo, conversational)")
-# async def chatgpt(ctx, message):
-# 	await ctx.defer()
-# 	try:
-# 		# id = ctx.user.id
-# 		id = 0
-# 		messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
-# 		if messages_row:
-# 			messages_list = json.loads(messages_row[0])
-# 		else:
-# 			messages_list = []
-# 			initial_message = {"role": "system", "content": "you're a helpful and decisive lad that LOVES fortnite and answers any questions. even if the questions aren't fortnite-related, you manage to sneak a fortnite reference into each answer. you are also very biased towards fortnite and have a fortnite accent"}
-# 			messages_list.append(initial_message)
-# 		#messages_list = json.loads(messages_list)
-# 		new_message = {"role": "user", "content": message}
-# 		messages_list.append(new_message)
-# 		response = chatgpt_query(messages_list)
-# 		messages_list.append(response.choices[0].message)
-# 		updated_messages_list = json.dumps(messages_list)
-# 		cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, updated_messages_list))
-# 		total_tokens = response.usage.total_tokens
-# 		cost = (total_tokens/1000) * 0.00175
-# 		msg = await ctx.respond(response.choices[0].message.content)
-# 		cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-# 	except Exception as e:
-# 		await ctx.respond(e)
+@discordClient.slash_command()
+async def get_ephemeral_port(ctx):
+	await ctx.defer()
+	port = get_new_port()
+	await ctx.respond(f"New port: {port}")
 
 chatgpt = discordClient.create_group("chatgpt", "Edit heh's AI settings")
 
@@ -1248,77 +1233,6 @@ async def set_prompt(
 		await ctx.respond(f"Current role is:\n{prompt}\n\nAre you sure you want to change it to:\n{role}", view=chatgptview(prompt=role, user_id=user_id))
 	except Exception as e:
 		await ctx.respond(f"oopsie woopsie fucky wucky {e}")
-		
-
-# @discordClient.slash_command(description="Generate an image with DALL·E")
-# async def dalle(ctx, prompt):
-# 	await ctx.defer()
-# 	try:
-# 		image_url = dalle_prompt(prompt)
-# 		newuuid = str(uuid.uuid4())
-# 		img = urllib.request.urlopen(image_url)
-# 		img_data = img.read()
-# 		with open(f'dalle/{newuuid}.png', "wb") as f:
-# 			f.write(img_data)
-# 		msg = await ctx.respond(file=discord.File(f'dalle/{newuuid}.png'))
-# 		os.remove(f'dalle/{newuuid}.png')
-# 		cost = 0.02
-# 		cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-# 	except Exception as e:
-# 		await ctx.respond(e)
-
-# @discordClient.slash_command(description="Generate a variation of an image you provide with DALL·E")
-# async def dalle_variation(ctx):
-# 	await ctx.defer()
-# 	try:
-# 		if ctx.message.reference and ctx.message.reference.cached_message:
-# 			replied_message = ctx.message.reference.cached_message
-# 			if replied_message.attachments:
-# 				attachment = replied_message.attachments[0]
-# 				newuuid = str(uuid.uuid4())
-# 				await attachment.save(f'{newuuid}.png')
-# 				image_url = dalle_image_variation(newuuid)
-# 				os.remove(f'{newuuid}.png')
-# 				newuuid = str(uuid.uuid4())
-# 				img = urllib.request.urlopen(image_url)
-# 				img_data = img.read()
-# 				with open(f'dalle/{newuuid}.png', "wb") as f:
-# 					f.write(img_data)
-# 				msg = await ctx.respond(file=discord.File(f'dalle/{newuuid}.png'))
-# 				os.remove(f'dalle/{newuuid}.png')
-# 				cost = 0.02
-# 				cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-# 			else:
-# 				await ctx.respond("This message doesn't contain any attachments.")
-# 		else:
-# 			if ctx.message.reference:
-# 				await ctx.respond("I don't have that message cached, maybe send it again!")
-# 			await ctx.respond("You need to use this command with a reply to a message.")
-
-
-		# message = await ctx.channel.fetch_message(message_id)
-		# if len(message.attachments) > 0:
-		# 	attachment = message.attachments[0]
-		# 	newuuid = str(uuid.uuid4())
-		# 	await attachment.save(f'{newuuid}.png')
-		# 	image_url = dalle_image_variation(newuuid)
-		# 	os.remove(f'{newuuid}.png')
-		# 	newuuid = str(uuid.uuid4())
-		# 	img = urllib.request.urlopen(image_url)
-		# 	img_data = img.read()
-		# 	with open(f'dalle/{newuuid}.png', "wb") as f:
-		# 		f.write(img_data)
-		# 	msg = await ctx.respond(file=discord.File(f'dalle/{newuuid}.png'))
-		# 	os.remove(f'dalle/{newuuid}.png')
-		# 	cost = 0.02
-		# 	cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-		# else:
-		# 	await ctx.respond("This message doesn't contain any images.")
-	# except Exception as e:
-	# 	await ctx.respond(e)
-
-		
-		
 
 def time_to_text(hour:int, minute:int):
 	if minute == 0:

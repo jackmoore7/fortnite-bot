@@ -1,5 +1,4 @@
 import requests
-import json
 
 def search_lego_item(string):
 
@@ -66,8 +65,6 @@ def search_lego_item(string):
 
     response = requests.post('https://www.lego.com/api/graphql/SearchProductsQuery', headers=headers, json=json_data)
     response = response.json()
-    with open('data.json', 'w') as f:
-        json.dump(response['data']['searchProducts']['productResult'], f)
     return response['data']['searchProducts']['productResult']
 
 def get_lego_item_by_id(id):
@@ -106,6 +103,4 @@ def get_lego_item_by_id(id):
 
     response = requests.post('https://www.lego.com/api/graphql/ProductDetails', headers=headers, json=json_data)
     response = response.json()
-    with open('data2.json', 'w') as f:
-        json.dump(response, f)
     return response

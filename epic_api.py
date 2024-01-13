@@ -180,7 +180,7 @@ def get_free_games():
                 if game['promotions']['promotionalOffers'][0]['promotionalOffers'][0]:
                     title = game['title']
                     description = game['description']
-                    image_url = [item["url"] for item in game["keyImages"] if item["type"] == "DieselStoreFrontWide"]
+                    image_url = [item["url"] for item in game["keyImages"] if item["type"] == "DieselStoreFrontWide" or item["type"] == "OfferImageWide"]
                     start_date = game['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['startDate']
                     end_date = game['promotions']['promotionalOffers'][0]['promotionalOffers'][0]['endDate']
                     games_list.append((title, description, image_url[0], start_date, end_date))

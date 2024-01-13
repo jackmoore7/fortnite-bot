@@ -7,10 +7,10 @@ import urllib.parse
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
 
-def update_build_number(id):
+def update_build_number():
     build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
     url = "https://www.coles.com.au/_next/data/"
-    r = requests.get(url + build_version + "/en/product/" + str(id) + ".json")
+    r = requests.get(url)
     soup = BeautifulSoup(r.content, 'html.parser')
     script = soup.find("script", id="__NEXT_DATA__")
     if script:
@@ -20,15 +20,14 @@ def update_build_number(id):
             cursor.execute("UPDATE coles_version SET version = ?", (build_id,))
             return f"Coles API version number was out of date and just updated to {build_id}. Please try your request again."
         else:
-            return "Coles API version number did not need updating, something else is wrong. Please try your request again."
+            return "Couldn't find a product with that ID"
     
 def get_item_by_id(id):
     build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
     url = "https://www.coles.com.au/_next/data/"
     r = requests.get(url + build_version + "/en/product/" + str(id) + ".json")
     if r.status_code == 404:
-        # build number may have changed, get the new one
-        return update_build_number(id)
+        return update_build_number()
     else:
         r = r.json()
         product = r['pageProps']['__N_REDIRECT']
@@ -63,33 +62,8 @@ def search_item(query):
     url = "https://www.coles.com.au/_next/data/"
     r = requests.get(url + build_version + "/en/search.json?q=" + query)
     if r.status_code == 404:
-        return update_build_number(12345)
+        return update_build_number()
     else:
         r = r.json()
-        results = r['pageProps']['searchResults']['results']
-        results_amount = r['pageProps']['searchResults']['noOfResults']
-        results_list = [(product['id'], product['name'], product['brand']) for product in results if ('adId' not in product or not product['adId']) and 'id' in product]
-        results_list.insert(0, results_amount)
-        return results_list
-
-
-def add_item_to_db_by_id(id):
-    product = get_item_by_id(id)
-    if type(product) is not tuple:
-        return product
-    if product:
-        id = product[0]
-        name = product[1]
-        brand = product[2]
-        description = product[3]
-        current_price = product[4]
-        on_sale = product[5]
-        available = product[6]
-        item = cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (id,)).fetchone()
-    else:
-        return "Couldn't find a product with that ID"
-    if item:
-        return f"You're already tracking {brand} {name}. Would you like to remove it from your list?"
-    else:
-        cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, brand, description, current_price, on_sale, available))
-        return f"Added {brand} {name} to your list"
+        results = r['pageProps']['searchResults']
+        return results
