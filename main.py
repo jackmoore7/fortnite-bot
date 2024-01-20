@@ -781,17 +781,6 @@ async def stop_task(ctx, task_name):
 		except Exception as e:
 			await ctx.respond(f"Task couldn't be stopped: {e}")
 
-@discordClient.slash_command(description="[Owner] Reboot the bot")
-async def reboot(ctx):
-	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
-	else:
-		try:
-			await ctx.respond("✅")
-			os.execl(sys.executable, sys.executable, *sys.argv)
-		except Exception as e:
-			await ctx.respond(e)
-
 @discordClient.slash_command(description="[Owner] Add friend")
 async def add_friend(ctx, user_id):
 	if ctx.user.id != int(os.getenv('ME')):
@@ -1079,7 +1068,7 @@ async def delete_message_by_id(ctx, id):
 async def elevation(ctx, lat, long):
 	await ctx.respond(get_elevation(lat, long))
 
-@discordClient.slash_command()
+@discordClient.slash_command(description="SIGKILL the bot's PID")
 async def die(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")

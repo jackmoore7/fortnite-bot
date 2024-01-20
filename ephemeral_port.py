@@ -41,7 +41,7 @@ def get_new_port():
         send_webhook("Deleted existing port")
         driver.find_element("xpath", '//*[@id="request-port-cont"]/button[2]').click()
         send_webhook("Requested new matching port")
-        port = driver.find_element("xpath", '//*[@id="epf-port-info"]/span[1]')
+        port = driver.find_element("xpath", '//*[@id="epf-port-info"]/span[2]')
         print(port)
         send_webhook(f"New port requested successfully: {port.text}")
     except NoSuchElementException as e:
