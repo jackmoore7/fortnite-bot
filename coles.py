@@ -29,7 +29,7 @@ def get_item_by_id(id):
         build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
         r = requests.get(url + build_version + "/en/product/" + str(id) + ".json")
         if r.status_code == 404:
-            return f"Couldn't find a product with the ID {id}"
+            return f"{id} returned a 404. Build number does not need updating."
     r = r.json()
     product = r['pageProps']['__N_REDIRECT']
     r = requests.get(url + build_version + "/en" + product + ".json")

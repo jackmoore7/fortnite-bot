@@ -119,6 +119,7 @@ async def on_ready():
 	ozb_bangers.start()
 	gog_free_games.start()
 	lego_bg.start()
+	transmission_port_forwarding.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -129,6 +130,7 @@ async def on_ready():
 	tasks_list['free_games'] = epic_free_games
 	tasks_list['ozb_bangers'] = ozb_bangers
 	tasks_list['lego'] = lego_bg
+	tasks_list['transmission'] = transmission_port_forwarding
 	print(f"{discordClient.user} is online! My PID is {os.getpid()}.")
 
 @tasks.loop(minutes=5)
@@ -347,6 +349,8 @@ async def fortnite_shop_update_v2():
 			if no_images:
 				await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
 				for item in no_images:
+					if len(item) < 1:
+						continue
 					await channel.send(item)
 			await channel.send("---")
 			cursor.execute("DELETE FROM shop_content")
@@ -681,6 +685,16 @@ async def ozb_bangers():
 		await asyncio.sleep(60)
 		ozb_bangers.restart()
 
+@tasks.loop(minutes=5)
+async def transmission_port_forwarding():
+	try:
+		channel = discordClient.get_channel(int(os.getenv('TRANSMISSION_CHANNEL')))
+		response = port_test()
+		if response:
+			await channel.send(response)
+	except Exception as e:
+		await channel.send(f"transmission_port_forwarding encountered an exception: {e}")
+
 coles = discordClient.create_group("coles", "Edit your tracked items list")
 
 @coles.command(description="Search a Coles item by name")
@@ -690,6 +704,9 @@ async def search(ctx, string):
 	if results:
 		url = "https://productimages.coles.com.au/productimages"
 		num_results = results['noOfResults']
+		if num_results == 0:
+			await ctx.respond("Your search returned no results.")
+			return
 		results = results['results']
 		results_list = [(product['id'], product['name'], product['brand'], product['imageUris'][0]['uri']) for product in results if ('adId' not in product or not product['adId']) and 'id' in product]
 		pages = []
@@ -1137,12 +1154,6 @@ async def list(ctx):
 		compact_info = f"**Name**: {name}\n**Price**: {price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {availability}"
 		embed.add_field(name=f"{id} - {name}", value=compact_info, inline=False)
 	await ctx.respond(embed=embed)
-
-@discordClient.slash_command()
-async def get_ephemeral_port(ctx):
-	await ctx.defer()
-	port = get_new_port()
-	await ctx.respond(f"New port: {port}")
 
 chatgpt = discordClient.create_group("chatgpt", "Edit heh's AI settings")
 
