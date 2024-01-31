@@ -55,6 +55,7 @@ from uv import *
 from openai_api import *
 from lego_api import *
 from ephemeral_port import *
+from seveneleven_api import *
 
 intents = discord.Intents.all()
 intents.members = True
@@ -232,7 +233,6 @@ async def lego_bg():
 		if items_old != items_new:
 			for item in items_new:
 				cursor.execute("UPDATE lego SET name = ?, image_url = ?, slug = ?, availability = ?, on_sale = ?, price = ? WHERE id = ?", (item[1], item[2], item[3], item[4], item[5], item[6], item[0]))
-			await channel.send("Items you're tracking were updated")
 
 		for item1, item2 in zip(items_old, items_new):
 			differences_exist = any(old_value != new_value for old_value, new_value in zip(item1[3:], item2[3:]))
@@ -250,7 +250,7 @@ async def lego_bg():
 				await channel.send(embed=embed)
 
 	except Exception as e:
-		print(f"Exception: {e}")
+		await channel.send(f"Exception: {e}")
 
 @tasks.loop(minutes=5)
 async def fortnite_status_bg():
@@ -689,7 +689,7 @@ async def ozb_bangers():
 async def transmission_port_forwarding():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('TRANSMISSION_CHANNEL')))
-		response = port_test()
+		response = set_new_port()
 		if response:
 			await channel.send(response)
 	except Exception as e:
@@ -1093,6 +1093,12 @@ async def die(ctx):
 	await ctx.respond("Death request received 🫡")
 	os.kill(int(os.getpid()), signal.SIGKILL)
 	await discordClient.close()
+
+@discordClient.slash_command(description="Check the U91/E10 prices of all 7-Eleven stores within 512km")
+async def check_fuel(ctx):
+	await ctx.defer()
+	response = check_lowest_fuel_price()
+	await ctx.respond(response)
 
 lego = discordClient.create_group("lego")
 
