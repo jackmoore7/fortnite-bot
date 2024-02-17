@@ -29,6 +29,7 @@ from bs4 import BeautifulSoup
 import logging
 from systemd.journal import JournalHandler
 import heartrate
+from transmission_rpc import Client
 
 heartrate.trace(browser=True, host='0.0.0.0')
 
@@ -80,22 +81,14 @@ def timestampify_z(string):
 	return f"<t:{int(mktime(struct_time))}:R>"
 
 def embed_tweets(message):
-	fx = 'fxtwitter'
-	fixup = 'fixupx'
-
-	tweets = re.compile(r'https?:\/\/(?:www\.)?(twitter)\.com\/(?:#!\/)?(\w+)\/status(?:es)?\/(\d+)')
-	xeets = re.compile(r'https?:\/\/(www\.)?(x)\.com\/[A-Za-z0-9_]{1,15}\/status\/[0-9]{18,}')
-
-	match1 = tweets.search(message.content)
-	match2 = xeets.search(message.content)
-    
-	if match1:
-		embed = match1.group().replace(match1.group(1), fx)
-		return embed
-
-	if match2:
-		embed = match2.group().replace(match2.group(1), fixup)
-		return embed
+    url_regex = re.compile(r'https?:\/\/(?:www\.)?(twitter|x)\.com\/(?:#!\/)?(\w+)\/status(?:es)?\/(\d+)')
+    replacement_regex = r'https://fxtwitter.com/\2/status/\3'
+    match = url_regex.search(message.content)
+    if match:
+        url = match.group(0)
+        modified_url = re.sub(url_regex, replacement_regex, url)
+        modified_text = message.content.replace(url, modified_url)
+        return modified_text
 
 def percentage_change(old, new):
 	try:
@@ -121,6 +114,7 @@ async def on_ready():
 	gog_free_games.start()
 	lego_bg.start()
 	transmission_port_forwarding.start()
+	fuel_check.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -161,7 +155,6 @@ async def tv_show_update_bg():
 		if len(feed['entries']) > 0:
 			latest_guid = feed['entries'][0]['guid']
 		else:
-			print("No recent episode entries. Skipping...")
 			return
 		if latest_guid != last_guid:
 			rssembed = discord.Embed(title = "A new episode just released!")
@@ -689,11 +682,25 @@ async def ozb_bangers():
 async def transmission_port_forwarding():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('TRANSMISSION_CHANNEL')))
-		response = set_new_port()
+		response = test_port()
 		if response:
 			await channel.send(response)
 	except Exception as e:
 		await channel.send(f"transmission_port_forwarding encountered an exception: {e}")
+
+@tasks.loop(minutes=5)
+async def fuel_check():
+	channel = discordClient.get_channel(int(os.getenv('FUEL_CHANNEL')))
+	try:
+		response = check_lowest_fuel_price_p03()
+		last_updated = response[1]
+		response = response[0]
+		db_price = cursor.execute("SELECT * FROM fuel").fetchone()[0]
+		if db_price != str(response['price']):
+			cursor.execute("UPDATE fuel SET price = ?", (str(response['price']),))
+			await channel.send(f"The cheapest fuel is {response['type']} at {response['suburb']} for {response['price']}.")
+	except Exception as e:
+		await channel.send(f"Uh oh {e}")
 
 coles = discordClient.create_group("coles", "Edit your tracked items list")
 
@@ -865,9 +872,6 @@ notifyme = discordClient.create_group("notifyme", "Get notified when an item you
 async def edit(ctx, item):
 	if len(item) > 25:
 		await ctx.respond("String must be less than 26 characters")
-		return
-	if 'aldi' in item.lower():
-		await ctx.respond("No")
 		return
 	text_check = re.findall(r'(?i)[^a-z0-9\s\-\']', item)
 	if text_check:
@@ -1094,11 +1098,28 @@ async def die(ctx):
 	os.kill(int(os.getpid()), signal.SIGKILL)
 	await discordClient.close()
 
-@discordClient.slash_command(description="Check the U91/E10 prices of all 7-Eleven stores within 512km")
+@discordClient.slash_command(description="Check the U91/E10 prices of all 7-Eleven stores in NSW")
 async def check_fuel(ctx):
 	await ctx.defer()
-	response = check_lowest_fuel_price()
-	await ctx.respond(response)
+	response = check_lowest_fuel_price_p03()
+	last_updated = response[1]
+	response = response[0]
+	db_price = cursor.execute("SELECT * FROM fuel").fetchone()[0]
+	print(type(db_price))
+	print(type(response['price']))
+	if db_price != response['price']:
+		print("Not the same as DB")
+	await ctx.respond(f"The cheapest fuel is {response['type']} at {response['suburb']} for {response['price']}. Last updated <t:{last_updated}:R>.")
+
+@discordClient.slash_command(description="Change Transmission's forwarding port")
+async def change_port(ctx, port_int):
+	host = os.getenv("TRANSMISSION_HOST")
+	port = os.getenv("TRANSMISSION_PORT")
+	username = os.getenv("TRANSMISSION_USERNAME")
+	password = os.getenv("TRANSMISSION_PASSWORD")
+	c = Client(host=host, port=port, username=username, password=password)
+	c.set_session(peer_port=int(port_int))
+	await ctx.respond("Port changed.")
 
 lego = discordClient.create_group("lego")
 
@@ -1275,7 +1296,10 @@ async def on_message(message):
 	if message.author == discordClient.user:
 		return
 	if embed_tweets(message):
-		await message.channel.send(embed_tweets(message))
+		webhook = (await message.channel.webhooks())[0]
+		await webhook.send(content=embed_tweets(message), username=message.author.name, avatar_url=message.author.avatar)
+		await message.delete()
+		return
 	if discordClient.user in message.mentions:
 		await message.channel.trigger_typing()
 		try:
@@ -1333,15 +1357,11 @@ async def on_message(message):
 		embeds = message.embeds
 		if embeds:
 			for embed in embeds:
-				ocr = re.findall(r'(?i)aldi', detect_text_uri(embed.thumbnail.url))
-				if ocr:
-					pass
-				if not ocr:
-					logos = detect_logos_uri(embed.thumbnail.url)
-					for logo in logos:
-						cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
-					if logos:
-						await message.add_reaction("👀")
+				logos = detect_logos_uri(embed.thumbnail.url)
+				for logo in logos:
+					cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
+				if logos:
+					await message.add_reaction("👀")
 
 	if not urls:
 		if len(message.content) > 125:
@@ -1371,34 +1391,27 @@ async def on_message(message):
 			myuuid = str(uuid.uuid4())
 			await attachment.save(myuuid)
 			await asyncio.sleep(2)
-			img = detect_text(myuuid)
-			ocr = None
-			if img:
-				ocr = re.findall(r'(?i)aldi', img)
-			if ocr:
-				pass
-			if not ocr:
-				logos = detect_logos(myuuid)
-				for logo in logos:
-					cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
-				if logos:
+			logos = detect_logos(myuuid)
+			for logo in logos:
+				cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
+			if logos:
+				await message.add_reaction("👀")
+			if not logos:
+				labels = detect_labels(myuuid)
+				for label in labels:
+					cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, label.description, label.score])
+					label.description = label.description.lower()
+					if 'squirrel' in label.description:
+						await message.channel.send("it's andrew")
+						return
+					if 'dog' in label.description:
+						await message.channel.send("rat")
+						return
+					if 'electric blue' in label.description:
+						await message.add_reaction("⚡")
+						await message.add_reaction("🟦")
+				if labels:
 					await message.add_reaction("👀")
-				if not logos:
-					labels = detect_labels(myuuid)
-					for label in labels:
-						cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, label.description, label.score])
-						label.description = label.description.lower()
-						if 'squirrel' in label.description:
-							await message.channel.send("it's andrew")
-							return
-						if 'dog' in label.description:
-							await message.channel.send("rat")
-							return
-						if 'electric blue' in label.description:
-							await message.add_reaction("⚡")
-							await message.add_reaction("🟦")
-					if labels:
-						await message.add_reaction("👀")
 			if os.path.exists(myuuid):
 				os.remove(myuuid)
 	if 'heh' in message.content.lower():

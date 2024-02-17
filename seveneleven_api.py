@@ -1,5 +1,8 @@
 import requests
-import json
+import sqlite3 as sl
+
+con = sl.connect('fortnite.db', isolation_level=None)
+cursor = con.cursor()
 
 def check_lowest_fuel_price():
     try:
@@ -9,7 +12,6 @@ def check_lowest_fuel_price():
         fuel_stores = []
         for store in stores:
             if len(store['fuelOptions']) > 0:
-                print(store['name'])
                 fuel_stores.append({
                     'id': store['storeId'],
                     'name': store['name'],
@@ -37,5 +39,16 @@ def check_lowest_fuel_price():
         min_price_item = min(prices, key=lambda x: x['price'])
 
         return f"Found prices for {len(prices)} stores. Cheapest is selling for {(min_price_item['price'])/10}c/l at {min_price_item['name']} {min_price_item['location']}."
+    except Exception as e:
+        return e
+
+def check_lowest_fuel_price_p03():
+    try:
+        response = requests.get("https://projectzerothree.info/api.php?format=json")
+        response = response.json()
+        updated = response['updated']
+        cheapest_nsw = response['regions'][2]
+        min_price = min(filter(lambda x: x["type"] in ["E10", "U91"], cheapest_nsw["prices"]),key=lambda x: x["price"])
+        return min_price, updated
     except Exception as e:
         return e
