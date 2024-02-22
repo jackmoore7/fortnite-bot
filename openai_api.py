@@ -38,10 +38,10 @@ async def chatgpt_query(messages_list):
                         "type": "string",
                         "description": "The textual description of the image.",
                     },
-					"url": {
-						"type": "string",
-						"description": "The URL of the image to be included in followup message."
-					}
+					# "url": {
+					# 	"type": "string",
+					# 	"description": "The URL of the image to be included in followup message."
+					# }
                 },
                 "required": ["prompt"],
             },
@@ -86,7 +86,7 @@ async def chatgpt_query(messages_list):
             	{
 					"role": "function",
 					"name": function_name,
-					"content": function_response,
+					"content": "URL to include in followup message: " + function_response,
             	}
         	)
 			second_response = openai.ChatCompletion.create(
@@ -106,6 +106,7 @@ def dalle_prompt(prompt):
 	size="1024x1024"
 	)
 	image_url = response['data'][0]['url']
+	print(image_url)
 	image_data = requests.get(image_url).content
 	newuuid = str(uuid.uuid4())
 	s3_bucket = 'i.jack.vc'

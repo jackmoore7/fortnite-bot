@@ -38,6 +38,7 @@ def get_item_by_id(id):
     name = r['pageProps']['product']['name']
     brand = r['pageProps']['product']['brand']
     description = r['pageProps']['product']['description']
+    image_url = "https://productimages.coles.com.au/productimages" + r['pageProps']['product']['imageUris'][0]['uri']
     try:
         current_price = r['pageProps']['product']['pricing']['now']
     except TypeError:
@@ -55,7 +56,7 @@ def get_item_by_id(id):
         multibuy_unit_price = r['pageProps']['product']['pricing']['multiBuyPromotion']['reward']
     else:
         multibuy_unit_price = ""
-    return (id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price)
+    return (id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price, image_url)
     
 def search_item(query):
     query = urllib.parse.quote(query)

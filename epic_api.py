@@ -176,7 +176,7 @@ def get_free_games():
         games_list = []
         games = r['data']['Catalog']['searchStore']['elements']
         for game in games:
-            if len(game['promotions']['promotionalOffers']) > 0:
+            if game.get('promotions') and game['promotions'].get('promotionalOffers'):
                 if game['promotions']['promotionalOffers'][0]['promotionalOffers'][0]:
                     title = game['title']
                     description = game['description']

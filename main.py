@@ -172,32 +172,31 @@ async def coles_specials_bg():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('COLES_SPECIALS_CHANNEL')))
 		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
+		items_new = []
 		for product in items:
-			special_status = get_item_by_id(product[0])
-			if isinstance(special_status, tuple):
-				if product[6] != special_status[6]:
-					if special_status[6]:
-						await channel.send(f"{product[2]} {product[1]} is now available for purchase.")
+			result = get_item_by_id(product[0])
+			if result:
+				items_new.append(result)
+		if items != items_new:
+			for item in items_new:
+				cursor.execute("UPDATE coles_specials SET available = ?, on_sale = ?, current_price = ? WHERE id = ?", (item[6], item[5], item[4], item[0]))
+		for item1, item2 in zip(items, items_new):
+			differences_exist = any(old_value != new_value for old_value, new_value in zip(item1[4:], item2[4:]))
+			if differences_exist:
+				embed = discord.Embed(title=item2[1], color=0xe01a22)
+				embed.set_thumbnail(url=item2[9])
+				field_names = ['Price', 'On sale', 'Available']
+				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
+					if name == 'Price':
+						field_value = f"~~${old_value}~~\n${new_value}" if old_value != new_value else new_value
+					elif name == 'On sale' and item2[7]:
+						field_value = f"~~{old_value}~~\n{new_value} ({item2[7]})" if old_value != new_value else f"{new_value} ({item2[7]})"
 					else:
-						await channel.send(f"{product[2]} {product[1]} is no longer available for purchase.")
-					cursor.execute("UPDATE coles_specials SET available = ? WHERE id = ?", (special_status[6], product[0]))
-				if product[5] != special_status[5]:
-					if special_status[5]:
-						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
-						if (product[4] == special_status[4]) and special_status[7] and special_status[8]:
-							await channel.send(f"{product[2]} {product[1]} is on special: {special_status[7]} - reduces the price per unit from ${special_status[4]} to ${special_status[8]} ({percentage_change(special_status[4], special_status[8])}%)")
-					else:
-						cursor.execute("UPDATE coles_specials SET on_sale = ? WHERE id = ?", (special_status[5], product[0]))
-						if product[4] == special_status[4]:
-							await channel.send(f"{product[2]} {product[1]} is no longer on special.")
-				if (product[4] != special_status[4]):
-					cursor.execute("UPDATE coles_specials SET current_price = ? WHERE id = ?", (special_status[4], product[0]))
-					if product[4] > special_status[4]:
-						await channel.send(f"The price of {product[2]} {product[1]} was reduced from ${product[4]} to ${special_status[4]} ({percentage_change(product[4], special_status[4])}%)")
-					else:
-						await channel.send(f"The price of {product[2]} {product[1]} was increased from ${product[4]} to ${special_status[4]} (+{percentage_change(product[4], special_status[4])}%)")
-			else:
-				await channel.send(special_status)
+						field_value = f"~~{old_value}~~\n{new_value}" if old_value != new_value else new_value
+					embed.add_field(name=name, value=field_value, inline=False)
+				if item2[7] and item2[8]:
+					embed.add_field(name='Multibuy special', value=f"{item2[7]} - reduces the price per unit to ${item2[8]}", inline=False)
+				await channel.send(embed=embed)
 	except Exception as e:
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
 		await asyncio.sleep(10800)
