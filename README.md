@@ -1,14 +1,20 @@
+[![Python 3.9.2](https://img.shields.io/badge/python-3.9.2-blue.svg)](https://www.python.org/downloads/release/python-392/)
+
 A bot I made for my friends and I. Feel free to message me if you have questions :)
 
-# ‼ Important
-This Discord bot doesn't work out of the box! There are a *lot* of enviroment variables and the database isn't in this repo. You'll need to update these to your specs. 
+# Important info
+This has kind of turned into an amalgamation of a bunch of different projects into one repo, so cloning this repo will almost certainly not be beneficial for you. 
+If you find a feature you might find helpful, feel free to copy that part of code and add it to your own implementation.
 
-## Features
-### Fortnite updates
+# Features
+
+## Fortnite
+
+### Updates
 An internal task that checks the current version of the Fortnite manifest, and is configured to post in a specific channel when there's an update. 
 A **launcherAppClient2** token is needed for this function. Fortunately, the credentials you need to generate it is the same for everyone. You can grab them from [MixV2's Epic Research repo](https://github.com/MixV2/EpicResearch/blob/master/docs/auth/auth_clients.md).
 
-### Fortnite status
+### Server status
 An internal task that checks the current status of Fortnite via Epic's Lightswitch service, configured to post in a specific channel when the status changes.
 A **fortnitePCGameClient** token is needed for this function. Again, you can get this from [MixV2's Epic Research repo](https://github.com/MixV2/EpicResearch/blob/master/docs/auth/auth_clients.md).
 
@@ -19,3 +25,26 @@ I used [FortniteAPI.io](https://fortniteapi.io)'s API for this feature.
 ### Shop offers
 An internal task that checks whether there are new offers ($) in the shop every 30 minutes. 
 Posts the name, price, expiration date and image. Fortunately, this doesn't require any authentication. 
+
+## Automatic Windscribe ephemeral port forwarding
+Unfortunately Windscribe doesn't offer a public API to add/change an ephemeral peer port for your account so I had to use **Selenium** (stop crying it'll be okay).
+It works by getting a new ephemeral peer port, using Transmission's RPC to change the client's peer port, and using **subprocess** to send a reboot command to a Docker container running Transmission (so the new port takes effect).
+Very hacky but it works :)
+
+## Coles
+This is also its own repo, but this one will almost certainly be more up to date. The plan is to make this a web app one day.
+
+### Product tracking
+Get updates when a product you're tracking changes. This can include price, promotional status, and availability. 
+
+### Search
+Search for an item. Uses a Discord embed with pagination.
+
+## Lego
+Mostly just made this for a friend who likes Lego and wanted to be the first to know when an out of stock item would be available again. Plus, I wanted to see if I could tackle the absolute mess of GraphQL they use (it's so scary).
+
+### Product tracking
+Get updates when a product you're tracking changes. This can include price, promotional status, and availability.
+
+### Search
+Search for an item. Uses a Discord embed with pagination. Doesn't work very well because the way Lego's search function works is absolutely wack.

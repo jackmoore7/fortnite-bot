@@ -314,14 +314,18 @@ async def fortnite_shop_update_v2():
 										await asyncio.sleep(2)
 									else:
 										print(f"Max retries reached, failed to download {newuuid}")
-										no_images.append(item[1])
+										if item[1]:
+											no_images.append(item[1])
 										break
 						else:
-							no_images.append(item[1])
+							if item[1]:
+								no_images.append(item[1])
 					except urllib.error.HTTPError:
-						no_images.append(item[1])
+						if item[1]:
+							no_images.append(item[1])
 				else:
-					no_images.append(item[1])
+					if item[1]:
+						no_images.append(item[1])
 			print("Finished downloading shop images")
 			if len(diff) == 1:
 				await channel.send("1 item was just added to the shop.")
@@ -341,8 +345,6 @@ async def fortnite_shop_update_v2():
 			if no_images:
 				await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
 				for item in no_images:
-					if len(item) < 1:
-						continue
 					await channel.send(item)
 			await channel.send("---")
 			cursor.execute("DELETE FROM shop_content")
