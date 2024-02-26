@@ -115,6 +115,7 @@ async def on_ready():
 	lego_bg.start()
 	transmission_port_forwarding.start()
 	fuel_check.start()
+	fortnite_shop_update_v3.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -387,43 +388,50 @@ async def fortnite_shop_update_v3():
 		else:
 			no_images.append(name)
 
-	# def timestampify(string):
-	# 	date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
-	# 	struct_time = date_time_obj.timetuple()
-	# 	return f"<t:{int(mktime(struct_time))}:R>"
-		
-
-	channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
+	channel = discordClient.get_channel(int(os.getenv('SHOP2_CHANNEL')))
 	r = fortnite_shop_v3()
 	date = cursor.execute("SELECT date FROM shop_v3").fetchone()[0]
 	new_date = r['data']['date']
 	if new_date != date:
+		vbucks_emoji = discordClient.get_emoji(int(os.getenv('VBUCKS_EMOJI')))
 		ping_list = cursor.execute("SELECT item, id FROM shop_ping").fetchall()
 		no_images = []
 		daily = []
 		for item in r['data']['daily']:
-			if 'gallery' in item['images'] and item['images']['gallery']:
-				daily.append((item['images']['gallery'], item['name'], item['history']['lastSeen']))
-			elif 'featured' in item['images'] and item['images']['featured']:
-				daily.append((item['images']['featured'], item['name'], item['history']['lastSeen']))
-			elif 'icon' in item['images'] and item['images']['icon']:
-				daily.append((item['images']['icon'], item['name'], item['history']['lastSeen']))
+			if type(item['history']) == bool:
+				if 'featured' in item['images'] and item['images']['featured']:
+					daily.append((item['images']['featured'], item['name'], item['history'], item['price']))
+				elif 'icon' in item['images'] and item['images']['icon']:
+					daily.append((item['images']['icon'], item['name'], item['history'], item['price']))
+				else:
+					no_images.append((item['name'], item['history'], item['price']))
 			else:
-				no_images.append((item['name'], item['history']['lastSeen']))
+				if 'featured' in item['images'] and item['images']['featured']:
+					daily.append((item['images']['featured'], item['name'], item['history']['lastSeen'], item['price']))
+				elif 'icon' in item['images'] and item['images']['icon']:
+					daily.append((item['images']['icon'], item['name'], item['history']['lastSeen'], item['price']))
+				else:
+					no_images.append((item['name'], item['history']['lastSeen'], item['price']))
 		featured = []
 		for item in r['data']['featured']:
-			if 'gallery' in item['images'] and item['images']['gallery']:
-				featured.append((item['images']['gallery'], item['name'], item['history']['lastSeen']))
-			elif 'featured' in item['images'] and item['images']['featured']:
-				featured.append((item['images']['featured'], item['name'], item['history']['lastSeen']))
-			elif 'icon' in item['images'] and item['images']['icon']:
-				featured.append((item['images']['icon'], item['name'], item['history']['lastSeen']))
+			if type(item['history']) == bool:
+				if 'featured' in item['images'] and item['images']['featured']:
+					featured.append((item['images']['featured'], item['name'], item['history'], item['price']))
+				elif 'icon' in item['images'] and item['images']['icon']:
+					featured.append((item['images']['icon'], item['name'], item['history'], item['price']))
+				else:
+					no_images.append((item['name'], item['history'], item['price']))
 			else:
-				no_images.append((item['name'], item['history']['lastSeen']))
+				if 'featured' in item['images'] and item['images']['featured']:
+					featured.append((item['images']['featured'], item['name'], item['history']['lastSeen'], item['price']))
+				elif 'icon' in item['images'] and item['images']['icon']:
+					featured.append((item['images']['icon'], item['name'], item['history']['lastSeen'], item['price']))
+				else:
+					no_images.append((item['name'], item['history']['lastSeen'], item['price']))
 		yesterday = cursor.execute("SELECT * FROM shop_v3_content").fetchall()
 		diff = [item for item in featured if item[1] not in (item[1] for item in yesterday)]
 		if len(diff) < 1:
-			diff2 = [item for item in yesterday if item[1] not in (item[1] for item in featured)] #check if something was deleted from the list
+			diff2 = [item for item in yesterday if item[1] not in (item[1] for item in featured)]
 			if len(diff2) > 0:
 				await channel.send("The following items were just deleted from the shop:")
 				for item in diff2:
@@ -435,7 +443,6 @@ async def fortnite_shop_update_v3():
 		print(f"diff: {len(diff)}")
 		await channel.send("# Fortnite shop update")
 		await channel.send(f"{(len(daily) + len(diff))} items were just added to the shop.")
-		await channel.send("## Daily rotation")
 		for item in daily:
 			img = process_image(item[0], item[1])
 			matching_items = [i for i, u in ping_list if i.lower() in item[1].lower()]
@@ -445,7 +452,6 @@ async def fortnite_shop_update_v3():
 					await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
 			await channel.send(f"{item[1]} - Last seen {timestampify_z(item[2])}", file=discord.File(f'temp_images/{img}'))
 			os.remove(f'temp_images/{img}')
-		await channel.send("## Featured")
 		for item in diff:
 			img = process_image(item[0], item[1])
 			matching_items = [i for i, u in ping_list if i.lower() in item[1].lower()]
@@ -453,7 +459,10 @@ async def fortnite_shop_update_v3():
 				users = [u for i, u in ping_list if i == cosmetic]
 				for user in users:
 					await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
-			await channel.send(f"{item[1]} - Last seen {timestampify_z(item[2])}", file=discord.File(f'temp_images/{img}'))
+			if type(item[2]) == bool:
+				await channel.send(f"## {item[1]} - {item[3]} {vbucks_emoji}\nFirst appearance in the shop!", file=discord.File(f'temp_images/{img}'))
+			else:
+				await channel.send(f"## {item[1]} - {item[3]} {vbucks_emoji}\nLast seen: {timestampify_z(item[2])}", file=discord.File(f'temp_images/{img}'))
 			os.remove(f'temp_images/{img}')
 		if no_images:
 			await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
