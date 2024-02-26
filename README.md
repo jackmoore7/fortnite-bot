@@ -1,4 +1,4 @@
-![NVIDIA_Share_gy3j9SL3QM](https://github.com/jackmoore7/fortnite-bot/assets/53585628/39b09910-4498-43bb-aaba-503b0890c2ac)[![Python 3.9.2](https://img.shields.io/badge/python-3.9.2-blue.svg)](https://www.python.org/downloads/release/python-392/)
+[![Python 3.9.2](https://img.shields.io/badge/python-3.9.2-blue.svg)](https://www.python.org/downloads/release/python-392/)
 
 A bot I made for my friends and I. Feel free to message me if you have questions :)
 
@@ -33,6 +33,7 @@ Very hacky but it works :)
 
 ## Sun protection
 ![NVIDIA_Share_gy3j9SL3QM](https://github.com/jackmoore7/fortnite-bot/assets/53585628/09e97b68-c0df-4e8b-b0f9-948a6da5e36a)
+
 Posts the UV forecast and protection window in the morning, and updates every minute throughout the day. Includes a ping if the forecast was incorrect.
 Uses data from [ARPANSA](https://www.arpansa.gov.au/)
 
@@ -47,6 +48,7 @@ Search for an item. Uses a Discord embed with pagination.
 
 ## Lego
 ![Discord_UO0FnT8ldL](https://github.com/jackmoore7/fortnite-bot/assets/53585628/b2ebce6c-57d2-4a40-a328-cef73df12976)
+
 Mostly just made this for a friend who likes Lego and wanted to be the first to know when an out of stock item would be available again. Plus, I wanted to see if I could tackle the absolute mess of GraphQL they use (it's so scary).
 
 ### Product tracking
