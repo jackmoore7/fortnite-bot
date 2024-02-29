@@ -56,7 +56,11 @@ def get_item_by_id(id):
         multibuy_unit_price = r['pageProps']['product']['pricing']['multiBuyPromotion']['reward']
     else:
         multibuy_unit_price = ""
-    return (id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price, image_url)
+    if r.get('pageProps') and r['pageProps'].get('product') and r['pageProps']['product'].get('pricing') and r['pageProps']['product']['pricing'].get('promotionType'):
+        promotion_type = r['pageProps']['product']['pricing']['promotionType']
+    else:
+        promotion_type = ""
+    return (id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price, image_url, promotion_type)
     
 def search_item(query):
     query = urllib.parse.quote(query)

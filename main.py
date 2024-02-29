@@ -172,6 +172,7 @@ async def tv_show_update_bg():
 async def coles_specials_bg():
 	try:
 		channel = discordClient.get_channel(int(os.getenv('COLES_SPECIALS_CHANNEL')))
+		product_url = "https://www.coles.com.au/product/"
 		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
 		items_new = []
 		for product in items:
@@ -184,19 +185,20 @@ async def coles_specials_bg():
 		for item1, item2 in zip(items, items_new):
 			differences_exist = any(old_value != new_value for old_value, new_value in zip(item1[4:], item2[4:]))
 			if differences_exist:
-				embed = discord.Embed(title=item2[1], color=0xe01a22)
+				embed = discord.Embed(title=f"{item2[2]} {item2[1]}", url=product_url + item2[0], color=0xe01a22)
 				embed.set_thumbnail(url=item2[9])
 				field_names = ['Price', 'On sale', 'Available']
 				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
 					if name == 'Price':
-						field_value = f"~~${old_value}~~\n${new_value}" if old_value != new_value else new_value
-					elif name == 'On sale' and item2[7]:
-						field_value = f"~~{old_value}~~\n{new_value} ({item2[7]})" if old_value != new_value else f"{new_value} ({item2[7]})"
+						field_value = f"~~${old_value}~~\n${float(new_value)}" if old_value != new_value else f"${new_value}"
+					elif name == 'On sale' and item2[10]:
+						field_value = f"~~{bool(old_value)}~~\n{new_value} ({item2[10]})" if old_value != new_value else f"{new_value} ({item2[10]})"
 					else:
-						field_value = f"~~{old_value}~~\n{new_value}" if old_value != new_value else new_value
+						field_value = f"~~{bool(old_value)}~~\n{new_value}" if old_value != new_value else new_value
 					embed.add_field(name=name, value=field_value, inline=False)
-				if item2[7] and item2[8]:
-					embed.add_field(name='Multibuy special', value=f"{item2[7]} - reduces the price per unit to ${item2[8]}", inline=False)
+				if item2[7]:
+					field_value = f"{item2[7]} - reduces the price per unit to ${item2[8]}" if item2[8] else f"{item2[7]}"
+					embed.add_field(name='Promo details', value=field_value, inline=False)
 				await channel.send(embed=embed)
 	except Exception as e:
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
