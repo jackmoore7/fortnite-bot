@@ -102,31 +102,40 @@ def percentage_change(old, new):
 @discordClient.event
 async def on_ready():
 	await discordClient.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="me booty arrrr"))
-	fortnite_update_bg.start()
-	tv_show_update_bg.start()
-	fortnite_status_bg.start()
-	fortnite_shop_update_v2.start()
-	fortnite_shop_offers.start()
-	coles_specials_bg.start()
-	arpansa.start()
-	epic_free_games.start()
-	ozb_bangers.start()
-	gog_free_games.start()
-	lego_bg.start()
-	transmission_port_forwarding.start()
-	fuel_check.start()
-	fortnite_shop_update_v3.start()
+	if not fortnite_update_bg.is_running():
+		fortnite_update_bg.start()
+	if not tv_show_update_bg.is_running():
+		tv_show_update_bg.start()
+	if not fortnite_status_bg.is_running():
+		fortnite_status_bg.start()
+	if not coles_specials_bg.is_running():
+		coles_specials_bg.start()
+	if not arpansa.is_running():
+		arpansa.start()
+	if not epic_free_games.is_running():
+		epic_free_games.start()
+	if not ozb_bangers.is_running():
+		ozb_bangers.start()
+	if not gog_free_games.is_running():
+		gog_free_games.start()
+	if not lego_bg.is_running():
+		lego_bg.start()
+	if not transmission_port_forwarding.is_running():
+		transmission_port_forwarding.start()
+	if not fuel_check.is_running():
+		fuel_check.start()
+	if not fortnite_shop_update_v3.is_running():
+		fortnite_shop_update_v3.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
-	tasks_list["shop"] = fortnite_shop_update_v2
-	tasks_list["offers"] = fortnite_shop_offers
 	tasks_list["coles"] = coles_specials_bg
 	tasks_list["arpansa"] = arpansa
 	tasks_list['free_games'] = epic_free_games
 	tasks_list['ozb_bangers'] = ozb_bangers
 	tasks_list['lego'] = lego_bg
 	tasks_list['transmission'] = transmission_port_forwarding
+	tasks_list['shop'] = fortnite_shop_update_v3
 	print(f"{discordClient.user} is online! My PID is {os.getpid()}.")
 
 @tasks.loop(minutes=5)
@@ -185,7 +194,7 @@ async def coles_specials_bg():
 		for item1, item2 in zip(items, items_new):
 			differences_exist = any(old_value != new_value for old_value, new_value in zip(item1[4:], item2[4:]))
 			if differences_exist:
-				embed = discord.Embed(title=f"{item2[2]} {item2[1]}", url=product_url + item2[0], color=0xe01a22)
+				embed = discord.Embed(title=f"{item2[2]} {item2[1]}", url=product_url + str(item2[0]), color=0xe01a22)
 				embed.set_thumbnail(url=item2[9])
 				field_names = ['Price', 'On sale', 'Available']
 				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
@@ -263,103 +272,6 @@ async def fortnite_status_bg():
 		print("Something went wrong getting the Fortnite status: " + str(repr(e)) + "\nRestarting internal task in 3 minutes.")
 		await asyncio.sleep(180)
 		fortnite_status_bg.restart()
-
-@tasks.loop(minutes=10)
-async def fortnite_shop_update_v2():
-	try:
-		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-		r = fortnite_shop()
-		uid = cursor.execute("SELECT uid FROM shop").fetchone()[0]
-		new_uid = r['lastUpdate']['uid']
-		no_images = []
-		if new_uid != uid:
-			# today = [(item['displayAssets'][0]['full_background'], item['displayName']) for item in r['shop']]
-			today = []
-			for item in r['shop']:
-				if 'displayAssets' in item and item['displayAssets'] and 'full_background' in item['displayAssets'][0]:
-					today.append((item['displayAssets'][0]['full_background'], item['displayName']))
-				else:
-					no_images.append(item['displayName'])
-
-			yesterday = cursor.execute("SELECT * FROM shop_content").fetchall()
-			diff = [tup for tup in today if tup[1] not in (y[1] for y in yesterday)]
-			if len(diff) < 1:
-				print("The shop was just updated, but there are no new items.")
-				diff2 = [tup for tup in yesterday if tup[1] not in (t[1] for t in today)] #check if something was deleted from the list
-				if len(diff2) > 0:
-					await channel.send("The following items were just removed from the shop:")
-					for item in diff2:
-						await channel.send(f"{item[1]}")
-				cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
-				return
-			for item in diff:
-				if item[0]:
-					newuuid = str(uuid.uuid4())
-					try:
-						img = urllib.request.urlopen(item[0])
-						img_data = img.read()
-						img_type = imghdr.what(None, h=img_data)
-						if img_type:
-							max_retries = 5
-							for attempt in range(max_retries):
-								try:
-									with open(f'temp_images/{newuuid}.{img_type}', "wb") as f:
-										f.write(img_data)
-									image = Image.open(f'temp_images/{newuuid}.{img_type}')
-									image.verify()
-									print(f"{newuuid} was successfully downloaded and verified")
-									break
-								except Exception as e:
-									print(f"Broken image detected: {e}")
-									os.remove(f'temp_images/{newuuid}.{img_type}')
-									if attempt < max_retries - 1:
-										print(f"Retrying ({attempt + 1}/{max_retries})...")
-										await asyncio.sleep(2)
-									else:
-										print(f"Max retries reached, failed to download {newuuid}")
-										if item[1]:
-											no_images.append(item[1])
-										break
-						else:
-							if item[1]:
-								no_images.append(item[1])
-					except urllib.error.HTTPError:
-						if item[1]:
-							no_images.append(item[1])
-				else:
-					if item[1]:
-						no_images.append(item[1])
-			print("Finished downloading shop images")
-			if len(diff) == 1:
-				await channel.send("1 item was just added to the shop.")
-			else:	
-				await channel.send(f"{len(diff)} items were just added to the shop.")
-			item_list = cursor.execute("SELECT item, id FROM shop_ping").fetchall()
-			for item in diff:
-				matching_items = [i for i, u in item_list if i.lower() in item[1].lower()]
-				for cosmetic in matching_items:
-					users = [u for i, u in item_list if i == cosmetic]
-					for user in users:
-						await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
-			files = glob.glob('temp_images/*.png')
-			for f in files:
-				await channel.send(file=discord.File(f))
-				os.remove(f)
-			if no_images:
-				await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
-				for item in no_images:
-					await channel.send(item)
-			await channel.send("---")
-			cursor.execute("DELETE FROM shop_content")
-			cursor.executemany("INSERT INTO shop_content VALUES (?, ?)", [(item[0], item[1]) for item in today])
-			cursor.execute("UPDATE shop SET uid = ?", (new_uid,))
-	except Exception as e:
-		print(traceback.format_exc())
-		files = glob.glob('temp_images/*.png')
-		for f in files:
-			os.remove(f)
-		await asyncio.sleep(60)
-		fortnite_shop_update_v2.restart()
 
 @tasks.loop(minutes=5)
 async def fortnite_shop_update_v3():
@@ -554,48 +466,6 @@ async def gog_free_games():
 			cursor.execute("INSERT INTO gog_free_games VALUES (?)", (url,))
 	else:
 		cursor.execute("DELETE FROM gog_free_games")
-
-@tasks.loop(minutes=60)
-async def fortnite_shop_offers():
-	try:
-		today_offers = get_fortnite_shop_offers()
-		yesterday_offers = cursor.execute("SELECT * FROM shop_offers").fetchall()
-		offer_diff = [tup for tup in today_offers if tup['title'] not in (y[1] for y in yesterday_offers)]
-		if len(offer_diff) > 0:
-			print(offer_diff)
-			channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-			if len(offer_diff) == 1:
-				await channel.send("There is 1 new offer in the shop")
-			else:
-				await channel.send(f"There are {len(offer_diff)} new offers in the shop")
-			for item in offer_diff:
-				if item['expiryDate']:
-					date_time_obj = dt.strptime(item['expiryDate'], '%Y-%m-%dT%H:%M:%S.%fZ')
-					struct_time = date_time_obj.timetuple()
-					timestamp = f"<t:{int(mktime(struct_time))}:R>"
-				else:
-					timestamp = "<t:2147483647:R>"
-				og_price = item['price']['totalPrice']['fmtPrice']['originalPrice'][2:]
-				discount_price = item['price']['totalPrice']['fmtPrice']['discountPrice'][2:]
-				if og_price and discount_price:
-					difference = float(og_price) - float(discount_price)
-					if difference != 0:
-						await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']} (${difference} off!)\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
-					else:
-						await channel.send(f"{item['title']}\n{item['price']['totalPrice']['fmtPrice']['discountPrice']}\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
-				else:
-					await channel.send(f"{item['title']}\nFree!\nExpires {timestamp}\n{item['keyImages'][0]['url']}")
-		else:
-			return
-		cursor.execute("DELETE FROM shop_offers")
-		for item in today_offers:
-			cursor.execute("INSERT INTO shop_offers VALUES (?, ?, ?, ?, ?, ?)", (item['id'], item['title'], item['expiryDate'], item['keyImages'][0]['url'], item['price']['totalPrice']['fmtPrice']['originalPrice'], item['price']['totalPrice']['fmtPrice']['discountPrice']))
-	except Exception as e:
-		print(e)
-		channel = discordClient.get_channel(int(os.getenv('SHOP_CHANNEL')))
-		await channel.send("Something went HORRIBLY TERRIBLY wrong with the shop offers task. Restarting in 30 minutes.")
-		await asyncio.sleep(1800)
-		fortnite_shop_offers.restart()
 
 start_time = time(20, 1, 0)
 end_time = time(7, 0, 0)

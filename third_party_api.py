@@ -7,12 +7,6 @@ def fortnite_br_stats(username):
 	r = requests.get(url, params={"name": username}, headers={"Authorization": key})
 	return r
 
-def fortnite_shop():
-	url = "https://fortniteapi.io/v2/shop?lang=en"
-	key = os.getenv('FNAPI_IO_KEY')
-	r = requests.get(url, headers={"Authorization": key})
-	return r.json()
-
 def getAccountID(username):
 	url = "https://fortniteapi.io/v1/lookup"
 	key = os.getenv('FNAPI_IO_KEY')
