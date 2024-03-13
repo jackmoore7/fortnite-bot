@@ -312,7 +312,7 @@ async def fortnite_shop_update_v3():
 		no_images = []
 		daily = []
 		for item in r['data']['daily']:
-			if type(item['history']) == bool:
+			if isinstance(item['history'], bool) or (item['history'].get('dates') and len(item['history']['dates']) < 2):
 				if 'featured' in item['images'] and item['images']['featured']:
 					daily.append((item['images']['featured'], item['name'], item['history'], item['price']))
 				elif 'icon' in item['images'] and item['images']['icon']:
@@ -321,14 +321,14 @@ async def fortnite_shop_update_v3():
 					no_images.append((item['name'], item['history'], item['price']))
 			else:
 				if 'featured' in item['images'] and item['images']['featured']:
-					daily.append((item['images']['featured'], item['name'], item['history']['lastSeen'], item['price']))
+					daily.append((item['images']['featured'], item['name'], sorted(item['history']['dates'])[-2], item['price']))
 				elif 'icon' in item['images'] and item['images']['icon']:
-					daily.append((item['images']['icon'], item['name'], item['history']['lastSeen'], item['price']))
+					daily.append((item['images']['icon'], item['name'], sorted(item['history']['dates'])[-2], item['price']))
 				else:
-					no_images.append((item['name'], item['history']['lastSeen'], item['price']))
+					no_images.append((item['name'], sorted(item['history']['dates'])[-2], item['price']))
 		featured = []
 		for item in r['data']['featured']:
-			if type(item['history']) == bool:
+			if isinstance(item['history'], bool) or (item['history'].get('dates') and len(item['history']['dates']) < 2):
 				if 'featured' in item['images'] and item['images']['featured']:
 					featured.append((item['images']['featured'], item['name'], item['history'], item['price']))
 				elif 'icon' in item['images'] and item['images']['icon']:
@@ -337,11 +337,11 @@ async def fortnite_shop_update_v3():
 					no_images.append((item['name'], item['history'], item['price']))
 			else:
 				if 'featured' in item['images'] and item['images']['featured']:
-					featured.append((item['images']['featured'], item['name'], item['history']['lastSeen'], item['price']))
+					featured.append((item['images']['featured'], item['name'], sorted(item['history']['dates'])[-2], item['price']))
 				elif 'icon' in item['images'] and item['images']['icon']:
-					featured.append((item['images']['icon'], item['name'], item['history']['lastSeen'], item['price']))
+					featured.append((item['images']['icon'], item['name'], sorted(item['history']['dates'])[-2], item['price']))
 				else:
-					no_images.append((item['name'], item['history']['lastSeen'], item['price']))
+					no_images.append((item['name'], sorted(item['history']['dates'])[-2], item['price']))
 		yesterday = cursor.execute("SELECT * FROM shop_v3_content").fetchall()
 		diff = [item for item in featured if item[1] not in (item[1] for item in yesterday)]
 		if len(diff) < 1:
@@ -373,7 +373,7 @@ async def fortnite_shop_update_v3():
 				users = [u for i, u in ping_list if i == cosmetic]
 				for user in users:
 					await channel.send(f"<@{user}>, {item[1]} is in the shop\nTriggered by your keyword: {cosmetic}")
-			if type(item[2]) == bool:
+			if isinstance(item[2], (bool, dict)):
 				await channel.send(f"## {item[1]} - {item[3]} {vbucks_emoji}\nFirst appearance in the shop!", file=discord.File(f'temp_images/{img}'))
 			else:
 				await channel.send(f"## {item[1]} - {item[3]} {vbucks_emoji}\nLast seen: {timestampify_z(item[2])}", file=discord.File(f'temp_images/{img}'))
