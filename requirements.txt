@@ -1,4 +1,4 @@
-aiohttp==3.8.6
+aiohttp==3.9.2
 aiosignal==1.2.0
 arandr==0.1.10
 astroid==2.5.1
