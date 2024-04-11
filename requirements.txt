@@ -65,7 +65,7 @@ h11==0.14.0
 hanging-threads==2.0.5
 heartrate==0.2.2
 html5lib==1.1
-idna==2.10
+idna==3.7
 imageio-ffmpeg==0.4.7
 importlib-metadata==7.0.1
 ipython==8.12.3
