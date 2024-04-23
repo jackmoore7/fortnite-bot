@@ -4,7 +4,7 @@ feedparser==6.0.10
 heartrate==0.2.2
 num2words==0.5.12
 openai==0.27.9
-Pillow==8.1.2
+Pillow==10.3.0
 Pillow==10.3.0
 protobuf==4.21.7
 python-dotenv==1.0.1
