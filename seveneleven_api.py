@@ -45,10 +45,13 @@ def check_lowest_fuel_price():
 def check_lowest_fuel_price_p03():
     try:
         response = requests.get("https://projectzerothree.info/api.php?format=json")
+        response.raise_for_status()
         response = response.json()
         updated = response['updated']
         cheapest_nsw = response['regions'][2]
         min_price = min(filter(lambda x: x["type"] in ["E10", "U91"], cheapest_nsw["prices"]),key=lambda x: x["price"])
         return min_price, updated
+    except requests.exceptions.HTTPError as e:
+        return e
     except Exception as e:
         return e

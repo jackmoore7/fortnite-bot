@@ -216,7 +216,7 @@ async def coles_specials_bg():
 
 @tasks.loop(minutes=30)
 async def lego_bg():
-	try:
+	# try:
 		channel = discordClient.get_channel(int(os.getenv('LEGO_CHANNEL')))
 		product_url = 'https://www.lego.com/en-au/product/'
 		items_old = cursor.execute("SELECT * FROM lego").fetchall()
@@ -253,8 +253,8 @@ async def lego_bg():
 
 				await channel.send(embed=embed)
 
-	except Exception as e:
-		await channel.send(f"Exception: {e}")
+	# except Exception as e:
+	# 	await channel.send(f"Exception: {e}")
 
 @tasks.loop(minutes=5)
 async def fortnite_status_bg():
@@ -582,7 +582,8 @@ async def fuel_check():
 			cursor.execute("UPDATE fuel SET price = ?", (str(response['price']),))
 			await channel.send(f"The cheapest fuel is {response['type']} at {response['suburb']} for {response['price']}.")
 	except Exception as e:
-		await channel.send(f"Uh oh {e}")
+		# await channel.send(f"Uh oh {e}")
+		print(f"fuel loop encountered an exception: {e}")
 
 coles = discordClient.create_group("coles", "Edit your tracked items list")
 
@@ -1258,13 +1259,14 @@ async def on_message(message):
 		attachment_type, attch_format = attachment.content_type.split('/')
 		if attachment_type == 'video':
 			if attachment.size > 52428800:
-				await message.channel.send("Video is >50MB and won't be posted to \#clips")
+				await message.add_reaction("❌")
 				return
 			channel = discordClient.get_channel(int(os.getenv('CLIPS_CHANNEL')))
 			button = Button(label="Jump", style=discord.ButtonStyle.link, url=message.jump_url)
 			view = View()
 			view.add_item(button)
 			await channel.send(attachment.url, view=view)
+			await message.add_reaction("✅")
 		if attachment_type == 'audio':
 			await attachment.save("audio.mp3")
 			response = transcribe_audio("audio.mp3")
