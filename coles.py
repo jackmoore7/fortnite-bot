@@ -3,14 +3,17 @@ import sqlite3 as sl
 from bs4 import BeautifulSoup
 import json
 import urllib.parse
+import certifi
+print(certifi.where())
 
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
+headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
 
 def update_build_number():
     build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
     url = "https://www.coles.com.au/_next/data/"
-    r = requests.get(url)
+    r = requests.get(url, headers=headers, verify=False)
     soup = BeautifulSoup(r.content, 'html.parser')
     script = soup.find("script", id="__NEXT_DATA__")
     if script:
@@ -19,20 +22,21 @@ def update_build_number():
         if build_id != build_version:
             cursor.execute("UPDATE coles_version SET version = ?", (build_id,))
             print(f"Coles API version number was updated to {build_id}")
-    
+
 def get_item_by_id(id):
     build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
     url = "https://www.coles.com.au/_next/data/"
-    r = requests.get(url + build_version + "/en/product/" + str(id) + ".json")
+    r = requests.get(url + build_version + "/en/product/" + str(id) + ".json", headers=headers, verify=False)
+    print(r)
     if r.status_code == 404:
         update_build_number()
         build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
-        r = requests.get(url + build_version + "/en/product/" + str(id) + ".json")
+        r = requests.get(url + build_version + "/en/product/" + str(id) + ".json", headers=headers, verify=False)
         if r.status_code == 404:
             return f"{id} returned a 404. Build number does not need updating."
     r = r.json()
     product = r['pageProps']['__N_REDIRECT']
-    r = requests.get(url + build_version + "/en" + product + ".json")
+    r = requests.get(url + build_version + "/en" + product + ".json", headers=headers, verify=False)
     r = r.json()
     id = r['pageProps']['product']['id']
     name = r['pageProps']['product']['name']
@@ -66,11 +70,11 @@ def search_item(query):
     query = urllib.parse.quote(query)
     build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
     url = "https://www.coles.com.au/_next/data/"
-    r = requests.get(url + build_version + "/en/search.json?q=" + query)
+    r = requests.get(url + build_version + "/en/search.json?q=" + query, headers=headers, verify=False)
     if r.status_code == 404:
         update_build_number()
         build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
-        r = requests.get(url + build_version + "/en/search.json?q=" + query)
+        r = requests.get(url + build_version + "/en/search.json?q=" + query, headers=headers, verify=False)
         if r.status_code == 404:
             return "Your search returned a 404"
     r = r.json()

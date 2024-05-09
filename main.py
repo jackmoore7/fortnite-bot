@@ -196,18 +196,18 @@ async def coles_specials_bg():
 			if differences_exist:
 				embed = discord.Embed(title=f"{item2[2]} {item2[1]}", url=product_url + str(item2[0]), color=0xe01a22)
 				embed.set_thumbnail(url=item2[9])
-				field_names = ['Price', 'On sale', 'Available']
+				field_names = ['Price', 'Promotion', 'Available']
 				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
 					if name == 'Price':
 						field_value = f"~~${old_value}~~\n${float(new_value)}" if old_value != new_value else f"${new_value}"
-					elif name == 'On sale' and item2[10]:
+					elif name == 'Promotion' and item2[10]:
 						field_value = f"~~{bool(old_value)}~~\n{new_value} ({item2[10]})" if old_value != new_value else f"{new_value} ({item2[10]})"
 					else:
 						field_value = f"~~{bool(old_value)}~~\n{new_value}" if old_value != new_value else new_value
 					embed.add_field(name=name, value=field_value, inline=False)
 				if item2[7]:
 					field_value = f"{item2[7]} - reduces the price per unit to ${item2[8]}" if item2[8] else f"{item2[7]}"
-					embed.add_field(name='Promo details', value=field_value, inline=False)
+					embed.add_field(name='Promotion details', value=field_value, inline=False)
 				await channel.send(embed=embed)
 	except Exception as e:
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
