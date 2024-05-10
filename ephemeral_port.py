@@ -46,7 +46,7 @@ def get_new_port():
         vars = {}
         display = Display(visible=0, size=(800, 600))
         display.start()
-        service = Service(executable_path='/usr/lib/chromium-browser/chromedriver')
+        service = Service(executable_path='/usr/bin/chromedriver')
         chrome_options = Options()
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--headless")
@@ -54,14 +54,15 @@ def get_new_port():
         windscribe_password = os.getenv('WINDSCRIBE_PASSWORD')
         driver = webdriver.Chrome(options=chrome_options, service=service)
         driver.implicitly_wait(10)
-        driver.get('https://www.windscribe.com/login')
+        driver.get("https://windscribe.com/login?auth_required#porteph")
         driver.find_element(By.ID, "username").send_keys(str(windscribe_username))
         driver.find_element(By.ID, "pass").send_keys(str(windscribe_password))
         driver.find_element(By.ID, "login_button").click()
-        driver.find_element(By.ID, "menu-ports").click()
-        driver.find_element(By.ID, "pf-eph-btn").click()
-        driver.find_element("xpath", '//*[@id="request-port-cont"]/button').click()
-        driver.find_element("xpath", '//*[@id="request-port-cont"]/button[2]').click()
+        try:
+            driver.find_element(By.XPATH, "//button[contains(.,\'Delete Port\')]").click()
+        except:
+            pass
+        driver.find_element(By.XPATH, "//button[contains(.,\'Request Matching Port\')]").click()
         WebDriverWait(driver, 5).until(expected_conditions.visibility_of_element_located((By.XPATH, "//div[@id=\'epf-port-info\']/span")))
         vars["new_port"] = driver.find_element(By.XPATH, "//div[@id=\'epf-port-info\']/span").text
         new_port = "{}".format(vars["new_port"])
