@@ -95,7 +95,7 @@ def percentage_change(old, new):
 		change = new - old
 		relative_change = change / abs(old)
 		percentage_change = relative_change * 100
-		return percentage_change
+		return round(percentage_change, 2)
 	except ZeroDivisionError:
 		return float('inf')
 
@@ -199,7 +199,7 @@ async def coles_specials_bg():
 				field_names = ['Price', 'Promotion', 'Available']
 				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
 					if name == 'Price':
-						field_value = f"~~${old_value}~~\n${float(new_value)}" if old_value != new_value else f"${new_value}"
+						field_value = f"~~${old_value}~~\n${float(new_value)} ({percentage_change(old_value, new_value)})" if old_value != new_value else f"${new_value}"
 					elif name == 'Promotion' and item2[10]:
 						field_value = f"~~{bool(old_value)}~~\n{new_value} ({item2[10]})" if old_value != new_value else f"{new_value} ({item2[10]})"
 					else:
@@ -533,22 +533,22 @@ async def ozb_bangers():
 		for post in feed['entries']:
 			upvotes = int(post['ozb_meta']['votes-pos'])
 			downvotes = int(post['ozb_meta']['votes-neg'])
-			if (upvotes >= 250 and downvotes < 10) and (post['link'] not in [x[0] for x in posted]):
+			try:
+				prefix = post['ozb_title-msg']['type'].upper()
+			except:
+				prefix = ''
+			if (upvotes >= 250 and downvotes < 10) and (post['link'] not in [x[0] for x in posted]) and (prefix != 'EXPIRED'):
 				try:
 					expiry = timestampify(post['ozb_meta']['expiry'])
 				except:
 					expiry = "Unknown"
-				try:
-					prefix = f"[{(post['ozb_title-msg']['type']).upper()}]"
-				except:
-					prefix = ''
 				title = post['title']
 				link = post['link']
 				upvote_emoji = discordClient.get_emoji(int(os.getenv('UPVOTE_EMOJI')))
 				downvote_emoji = discordClient.get_emoji(int(os.getenv('DOWNVOTE_EMOJI')))
 				ch = discordClient.get_channel(int(os.getenv('OZB_BANGERS_CHANNEL')))
 				embed = discord.Embed()
-				embed.title = f"{prefix} {title}"
+				embed.title = f"[{prefix}] {title}"
 				embed.description = f"{upvote_emoji} {upvotes}\n{downvote_emoji} {downvotes}"
 				embed.set_image(url=post['ozb_meta']['image'])
 				embed.add_field(name="Link", value=link, inline=False)
