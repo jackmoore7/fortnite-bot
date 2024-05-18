@@ -2,15 +2,16 @@ import json
 import boto3
 import io
 import uuid
-import openai
 import os
 import requests
-
-openai.organization = "org-p1aVCCHYJSv1GGzoauKukfql"
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.Model.list()
-
+import openai
+from openai import OpenAI
 from third_party_api import *
+
+client = OpenAI(
+  organization='org-p1aVCCHYJSv1GGzoauKukfql',
+  project='proj_7Y6EqNlguorsqDiEGOxBbagM',
+)
 
 def upload_image_to_s3(image_data, bucket_name, object_key):
     s3 = boto3.client("s3", 
@@ -20,93 +21,23 @@ def upload_image_to_s3(image_data, bucket_name, object_key):
     s3.upload_fileobj(io.BytesIO(image_data), bucket_name, object_key, ExtraArgs={"ContentType": "image/png"})
     print("Image uploaded to S3 successfully!")
 
-async def chatgpt_query(messages_list):
-	print(f"messages list length: {len(messages_list)}")
-	while len(messages_list) > 5:
-		messages_list.pop(1)
-	completion = await openai.ChatCompletion.acreate(
-	model="gpt-3.5-turbo",
-	messages=messages_list,
-	functions = [
-        {
-            "name": "generate_dalle_image",
-            "description": "Generate an image based on a textual description.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "The textual description of the image.",
-                    },
-					# "url": {
-					# 	"type": "string",
-					# 	"description": "The URL of the image to be included in followup message."
-					# }
-                },
-                "required": ["prompt"],
-            },
-        },
-		# {
-        #     "name": "get_fortnite_image",
-        #     "description": "Get the image of a Fortnite cosmetic by name. User must specify they are searching for an item from Fortnite. If return is null, say the item doesn't exist.",
-        #     "parameters": {
-        #         "type": "object",
-        #         "properties": {
-        #             "name": {
-        #                 "type": "string",
-        #                 "description": "The name of the Fortnite cosmetic.",
-        #             },
-		# 			"url": {
-		# 				"type": "string",
-		# 				"description": "The URL of the image to be included in followup message."
-		# 			}
-        #         },
-        #         "required": ["name"],
-        #     },
-        # },
-    ],
-    function_call="auto"
+def openai_chat(messages):
+
+	completion = client.chat.completions.create(
+	model="gpt-4o",
+	messages=messages
 	)
-	print(completion)
-	response = completion.choices[0].message
-	if response.get("function_call"):
-		available_functions = {
-            "generate_dalle_image": dalle_prompt,
-	    	# "get_fortnite_image": get_fortnite_image1
-        }
-		function_name = response["function_call"]["name"]
-		function_to_call = available_functions[function_name]
-		function_args = json.loads(response["function_call"]["arguments"])
-		function_response = function_to_call(*list(function_args.values()))
-		print(f"function args: {function_args}")
-		if function_response:
-			print(f"function response: {function_response}")
-			messages_list.append(response)
-			messages_list.append(
-            	{
-					"role": "function",
-					"name": function_name,
-					"content": "URL to include in followup message: " + function_response,
-            	}
-        	)
-			second_response = openai.ChatCompletion.create(
-				model="gpt-3.5-turbo-0613",
-				messages=messages_list,
-			)
-			print(f"second response: {second_response}")
-			second_response["choices"][0]["message"]["content"]
-			return second_response
-	print(f"completion: {completion}")
-	return completion
+	return completion.choices[0].message.content
 
 def dalle_prompt(prompt):
-	response = openai.Image.create(
+	response = client.images.generate(
+	model="dall-e-3",
 	prompt=prompt,
+	size="1024x1024",
+	quality="standard",
 	n=1,
-	size="1024x1024"
 	)
-	image_url = response['data'][0]['url']
-	print(image_url)
+	image_url = response.data[0].url
 	image_data = requests.get(image_url).content
 	newuuid = str(uuid.uuid4())
 	s3_bucket = 'i.jack.vc'
@@ -114,22 +45,6 @@ def dalle_prompt(prompt):
 	upload_image_to_s3(image_data, s3_bucket, s3_object_key)
 	image_url = f"https://i.jack.vc/dalle/{newuuid}.png"
 	return image_url
-
-def dalle_image_variation(uuid):
-	response = openai.Image.create_variation(
-	image=open(f"{uuid}.png", "rb"),
-	n=1,
-	size="1024x1024"
-	)
-	image_url = response['data'][0]['url']
-	return image_url
-
-def get_fortnite_image1(name):
-	response = fortnite_images(name)
-	if response:
-		return response
-	else:
-		return "This item doesn't exist"
 
 def transcribe_audio(file):
 	audio_file= open(file, "rb")

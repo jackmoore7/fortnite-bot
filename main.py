@@ -1065,114 +1065,9 @@ async def list(ctx):
 		embed.add_field(name=f"{id} - {name}", value=compact_info, inline=False)
 	await ctx.respond(embed=embed)
 
-chatgpt = discordClient.create_group("chatgpt", "Edit heh's AI settings")
-
-class chatgptview(discord.ui.View):
-
-	def __init__(self, prompt, user_id):
-		self.prompt = prompt
-		self.user_id = user_id
-		super().__init__()
-
-	@discord.ui.button(label="Yes, change", row=0, style=discord.ButtonStyle.primary)
-	async def first_button_callback(self, button, interaction):
-		if interaction.user.id == self.user_id:
-			self.disable_all_items()
-			try:
-				cursor.execute("UPDATE chatgpt_prompt SET prompt = ?", (self.prompt,))
-				cursor.execute("DELETE FROM chatgpt WHERE id = 0")
-				button.label = "Role changed"
-			except Exception as e:
-				button.label = f"Couldn't edit role: {e}"
-			await interaction.response.edit_message(view=self)
-		else:
-			await interaction.response.send_message("This button isn't yours!", ephemeral=True)
-			return
-
-	@discord.ui.button(label="No, keep", row=0, style=discord.ButtonStyle.danger)
-	async def second_button_callback(self, button, interaction):
-		if interaction.user.id != self.user_id:
-			return
-
-		self.disable_all_items()
-		button.label = "Kept!"
-		await interaction.response.edit_message(view=self)
-
-
-
-@chatgpt.command(description="Ask ChatGPT a question (custom role, non-conversational)")
-async def custom(
-		ctx: discord.ApplicationContext,
-		role: Option(str, "Enter the role you'd like ChatGPT to assume. Eg: \"You are a helpful assistant\"", required=True),
-		message: Option(str, "The question you'd like to ask.", required=True)
-		):
-	await ctx.defer()
-	try:
-		messages_list = []
-		initial_message = {"role": "system", "content": role}
-		new_message = {"role": "user", "content": message}
-		messages_list.append(initial_message)
-		messages_list.append(new_message)
-		response = chatgpt_query(messages_list)
-		total_tokens = response.usage.total_tokens
-		cost = (total_tokens/1000) * 0.00175
-		msg = await ctx.respond(response.choices[0].message.content)
-		cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-	except Exception as e:
-		await ctx.respond(e)
-
-@chatgpt.command(description="Delete conversation history")
-async def delete_history(ctx):
-	try:
-		# id = ctx.user.id
-		id = 0
-		cursor.execute("DELETE FROM chatgpt WHERE id = ?", (id,))
-		emoji = discordClient.get_emoji(int(os.getenv('ROO_EMOJI')))
-		await ctx.respond(emoji)
-	except Exception as e:
-		await ctx.respond(e)
-
-@chatgpt.command(description="Set heh's initial prompt (This will delete conversation history!)")
-async def set_prompt(
-		ctx: discord.ApplicationContext,
-		role: Option(str, "Enter the role you'd like heh to assume. Eg: \"You are a helpful assistant\"", required=True)
-		):
-	try:
-		user_id = ctx.user.id
-		prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
-		await ctx.respond(f"Current role is:\n{prompt}\n\nAre you sure you want to change it to:\n{role}", view=chatgptview(prompt=role, user_id=user_id))
-	except Exception as e:
-		await ctx.respond(f"oopsie woopsie fucky wucky {e}")
-
-def time_to_text(hour:int, minute:int):
-	if minute == 0:
-		return num2words(hour) + " o'clock"
-	elif minute == 15:
-		return "quarter past " + num2words(hour)
-	elif minute == 30:
-		return "half past " + num2words(hour)
-	elif minute == 45:
-		return "quarter to " + num2words(hour)
-	elif minute < 30:
-		return num2words(minute) + " past " + num2words(hour)
-	else:
-		return num2words(60 - minute) + " to " + num2words(hour+1)
-
-def get_24_hour_time(hour:int, hour_sent:int):
-	hour_sent = (hour_sent + 9) % 24 #convert gmt to aus time (will need to change for dls)
-	#if a message is sent in the evening with a small hour, or sent in the 
-	#morning with a large hour, its probably afternoon (with a little wiggle room)
-	print("hour:", hour, "created:", hour_sent)
-	if hour >= 0 and hour <= 23 and (hour_sent > 17 and hour < 12 or hour_sent < 12 and hour > 12):
-		return hour + 12
-	return hour
-
-def get_time_message(message_hour:int, message_min:int, created_hour:int):
-	hour = get_24_hour_time(message_hour, created_hour)
-	message = time_to_text(hour, message_min)
-	if message_hour > 12 and message_hour < 24:
-		message += " (24 hour time is the superior time 👍)"
-	return message
+@discordClient.slash_command(description="Generate an image with DALL-E 3")
+async def dalle3(ctx, prompt):
+	await ctx.reply(dalle_prompt(prompt))
 
 @discordClient.event
 async def on_message(message):
@@ -1184,55 +1079,40 @@ async def on_message(message):
 		await message.delete()
 		return
 	if discordClient.user in message.mentions:
-		await message.channel.trigger_typing()
-		try:
-			id = 0
-			messages_row = cursor.execute("SELECT messages FROM chatgpt WHERE id = ?", (id,)).fetchone()
-			prompt = cursor.execute("SELECT prompt FROM chatgpt_prompt").fetchone()[0]
-			if messages_row:
-				messages_list = json.loads(messages_row[0])
+		async with message.channel.typing():
+			contents = []
+			initial_message = {"role": "system", "content": "You're a helpful and decisive lad that LOVES Fortnite and answers any questions. Even if the questions aren't fortnite-related, you manage to sneak a Fortnite reference into each answer."}
+			contents.append(initial_message)
+			if message.reference:
+				referenced = await message.channel.fetch_message(message.reference.message_id)
+				messages = [message, referenced]
 			else:
-				print("we're starting the list again.")
-				messages_list = []
-				initial_message = {"role": "system", "content": prompt}
-				messages_list.append(initial_message)
-				dumped = json.dumps(messages_list)
-				cursor.execute("INSERT INTO chatgpt VALUES (?, ?)", (id, dumped))
-			new_message = {"role": "user", "content": str(message.content)}
-			print(f"message content: {message.content}")
-			messages_list.append(new_message)
-			#response = chatgpt_query(messages_list)
-			response = await asyncio.wait_for(chatgpt_query(messages_list), timeout=40)
-			messages_list.append(response.choices[0].message)
-			print(f"messages list: {messages_list}")
-			updated_messages_list = json.dumps(messages_list)
-			cursor.execute("UPDATE chatgpt SET messages = ? WHERE id = ?", (updated_messages_list, id))
-			total_tokens = response.usage.total_tokens
-			cost = (total_tokens/1000) * 0.00175
-			response_content = response.choices[0].message.content
-			if len(response_content) >= 2000:
-				print("message is too long, let's split it up")
-				response_list = []
-				offset = 0
-				while offset < len(response_content):
-					chunk = response_content[offset:offset+2000]
-					reversed_chunk = chunk[::-1]
-					length = reversed_chunk.find("\n")
-					chunk = chunk[:2000 - length]
-					offset += 2000 - length
-					response_list.append(chunk)
-				await message.reply(response_list[0], mention_author=False)
-				for msg in response_list[1:]:
-					await message.channel.send(msg)
-				await message.channel.trigger_typing()
-			else:
-				await message.channel.trigger_typing()
-				msg = await message.reply(response_content, mention_author=False)
-				cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
-		except asyncio.TimeoutError:
-			await message.reply("API call timed out. Please try again.", mention_author=False)
-		except Exception as e:
-			await message.reply(e, mention_author=False)
+				messages = await message.channel.history(limit=10).flatten()
+			messages.reverse()
+			for msg in messages:
+				if not msg.attachments and not msg.embeds:
+					contents.append({"role": "user" if msg.author != discordClient.user else "assistant", "content": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content})
+				else:
+					for embed in msg.embeds:
+						contents.append({
+								"role": "user" if msg.author != discordClient.user else "assistant",
+								"content": [
+									{"type": "text", "text": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content},
+									{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
+								]
+							})
+					for attachment in msg.attachments:
+						attachment_type, attch_format = attachment.content_type.split('/')
+						if attachment_type == 'image':
+							contents.append({
+								"role": "user" if msg.author != discordClient.user else "assistant",
+								"content": [
+									{"type": "text", "text": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content},
+									{"type": "image_url", "image_url": {"url": attachment.url, "detail": "high"}}
+								]
+							})
+			print(contents)
+			await message.reply(openai_chat(contents), mention_author=False)
 
 	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
 	if urls:
@@ -1338,31 +1218,6 @@ async def on_reaction_add(reaction, user):
 			id = reaction.message.id
 			response = cursor.execute("SELECT guess, score FROM ai_text WHERE id = ?", (id,)).fetchall()
 			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
-	if reaction.emoji == "❓":
-		id = reaction.message.id
-		response = cursor.execute("SELECT cost FROM chatgpt_cost WHERE id = ?", (id,)).fetchone()
-		total = cursor.execute("SELECT SUM(cost) FROM chatgpt_cost").fetchone()[0]
-		if(response):
-			await reaction.clear()
-			await reaction.message.reply(f"Cost for this response was ${response[0]}\nTotal so far is ${total}")
-	if reaction.emoji == "🤖":
-		id = reaction.message.id
-		if reaction.message.attachments:
-			await reaction.clear()
-			attachment = reaction.message.attachments[0]
-			newuuid = str(uuid.uuid4())
-			await attachment.save(f'{newuuid}.png')
-			image_url = dalle_image_variation(newuuid)
-			os.remove(f'{newuuid}.png')
-			newuuid = str(uuid.uuid4())
-			img = urllib.request.urlopen(image_url)
-			img_data = img.read()
-			with open(f'dalle/{newuuid}.png', "wb") as f:
-				f.write(img_data)
-			msg = await reaction.message.reply(file=discord.File(f'dalle/{newuuid}.png'))
-			os.remove(f'dalle/{newuuid}.png')
-			cost = 0.02
-			cursor.execute("INSERT INTO chatgpt_cost VALUES (?, ?)", (msg.id, cost))
 
 @discordClient.event
 async def on_member_update(before, after):
