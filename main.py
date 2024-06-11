@@ -11,25 +11,17 @@ from datetime import datetime as dt, timedelta
 from datetime import time
 from time import mktime
 from discord.ext import tasks
-from discord.ext import commands, pages
 from discord.ext.pages import Paginator, Page
 from discord.ui import Button, View
-from discord import Option
 import sqlite3 as sl
 from dotenv import load_dotenv
-import glob
-import urllib.request
-from num2words import num2words
 import imghdr
 import faulthandler, signal
 from PIL import Image
-import json
-import traceback
 from bs4 import BeautifulSoup
 import logging
 from systemd.journal import JournalHandler
 import heartrate
-from transmission_rpc import Client
 
 heartrate.trace(browser=True, host='0.0.0.0')
 
@@ -68,8 +60,6 @@ cursor = con.cursor()
 
 tasks_list = {}
 
-aldi_regex = r'(?i)[a4@]\s*[il1\|]\s*d\s*[il1\|]'
-
 def timestampify(string):
 	date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S%z')
 	struct_time = date_time_obj.timetuple()
@@ -91,13 +81,16 @@ def embed_tweets(message):
         return modified_text
 
 def percentage_change(old, new):
-	try:
-		change = new - old
-		relative_change = change / abs(old)
-		percentage_change = relative_change * 100
-		return round(percentage_change, 2)
-	except ZeroDivisionError:
-		return float('inf')
+    try:
+        change = new - old
+        relative_change = change / abs(old)
+        percentage_change = relative_change * 100
+        formatted_percentage_change = f"{percentage_change:.2f}%"
+        if percentage_change > 0:
+            formatted_percentage_change = "+" + formatted_percentage_change
+        return formatted_percentage_change
+    except ZeroDivisionError:
+        return "inf%"
 
 @discordClient.event
 async def on_ready():
@@ -147,7 +140,6 @@ async def fortnite_update_bg():
 		if current_version != response:
 			cursor.execute("UPDATE aes SET version = ?", (response,))
 			embed = discord.Embed(title="A new Fortnite update was just deployed")
-			# embed.set_footer(text="Use /update to subscribe to notifications")
 			embed.add_field(name="Build", value=response, inline=False)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 	except Exception as e:
@@ -265,7 +257,6 @@ async def fortnite_status_bg():
 		if current_status != response:
 			cursor.execute("UPDATE server SET status = ?", (response,))
 			embed = discord.Embed(title = "Fortnite server status update")
-			# embed.set_footer(text="Use /update to subscribe to notifications")
 			embed.add_field(name="Status", value=response)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
 	except Exception as e:
@@ -534,10 +525,10 @@ async def ozb_bangers():
 			upvotes = int(post['ozb_meta']['votes-pos'])
 			downvotes = int(post['ozb_meta']['votes-neg'])
 			try:
-				prefix = post['ozb_title-msg']['type'].upper()
+				prefix = f"[{post['ozb_title-msg']['type'].upper()}]"
 			except:
 				prefix = ''
-			if (upvotes >= 250 and downvotes < 10) and (post['link'] not in [x[0] for x in posted]) and (prefix != 'EXPIRED'):
+			if (upvotes >= 250 and downvotes < 10) and (post['link'] not in [x[0] for x in posted]) and (prefix != '[EXPIRED]'):
 				try:
 					expiry = timestampify(post['ozb_meta']['expiry'])
 				except:
@@ -548,7 +539,7 @@ async def ozb_bangers():
 				downvote_emoji = discordClient.get_emoji(int(os.getenv('DOWNVOTE_EMOJI')))
 				ch = discordClient.get_channel(int(os.getenv('OZB_BANGERS_CHANNEL')))
 				embed = discord.Embed()
-				embed.title = f"[{prefix}] {title}"
+				embed.title = f"{prefix} {title}"
 				embed.description = f"{upvote_emoji} {upvotes}\n{downvote_emoji} {downvotes}"
 				embed.set_image(url=post['ozb_meta']['image'])
 				embed.add_field(name="Link", value=link, inline=False)
@@ -613,7 +604,7 @@ async def search(ctx, string):
 	else:
 		await ctx.respond("Something went wrong. Please try again.")
 
-@coles.command(description="Add or remove an item")
+@coles.command(description="[Owner] Add or remove an item")
 async def edit(ctx, id):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")
@@ -638,7 +629,7 @@ async def edit(ctx, id):
 		else:
 			await ctx.respond(result)
 
-@coles.command(description="View your tracked items")
+@coles.command(description="[Owner] View your tracked items")
 async def list(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")
@@ -728,20 +719,12 @@ async def purge(ctx, amount):
 	await ctx.defer()
 	await ctx.channel.purge(limit=int(amount)+1, bulk=True)
 
-@discordClient.slash_command(description="Get pinged when someone joins a voice channel")
-async def pingme(ctx):
-	user_id = ctx.user.id
-	user = cursor.execute("SELECT * FROM pingme WHERE user = ?", (user_id,)).fetchone()
-	if user:
-		cursor.execute("DELETE FROM pingme WHERE user = ?", (user_id,))
-		await ctx.respond("Removed ✅")
-	else:
-		cursor.execute("INSERT INTO pingme VALUES (?)", (user_id,))
-		await ctx.respond("Added ✅")
-
 @discordClient.slash_command(description="Get pinged for sun protection forecasts")
 async def sunscreen(ctx):
 	role = ctx.guild.get_role(int(os.getenv('SUNSCREEN_ROLE')))
+	if not role:
+		await ctx.respond("This command doesn't work in this server.")
+		return
 	if role in ctx.user.roles:
 		await ctx.user.remove_roles(role)
 		await ctx.respond("Removed ✅")
@@ -796,86 +779,33 @@ async def fortnite(ctx, username):
 	data = r.json()['data']
 	name = data['account']['name']
 	level = data['battlePass']['level']
-	embed = discord.Embed(title = "All time statistics for " + name)
+	embed = discord.Embed(title="All time statistics for " + name)
 	stats = data['stats']['all']['overall']
 	fields = [
-		("Wins", "wins"),
-		("Top 3", "top3"),
-		("Top 5", "top5"),
-		("Top 6", "top6"),
-		("Top 10", "top10"),
-		("Top 12", "top12"),
-		("Top 25", "top25"),
-		("Kills", "kills"),
-		("Kills per minute", "killsPerMin"),
-		("Kills per match", "killsPerMatch"),
-		("Deaths", "deaths"),
-		("K/D", "kd"),
-		("Matches", "matches"),
-		("Winrate", "winRate"),
-		("Minutes played", "minutesPlayed"),
-		("Players outlived", "playersOutlived"),
-		("Last modified", "lastModified"),
+		("Wins", "wins", lambda x: x),
+		("Top 3", "top3", lambda x: x),
+		("Top 5", "top5", lambda x: x),
+		("Top 6", "top6", lambda x: x),
+		("Top 10", "top10", lambda x: x),
+		("Top 12", "top12", lambda x: x),
+		("Top 25", "top25", lambda x: x),
+		("Kills", "kills", lambda x: x),
+		("Kills per minute", "killsPerMin", lambda x: x),
+		("Kills per match", "killsPerMatch", lambda x: x),
+		("Deaths", "deaths", lambda x: x),
+		("K/D", "kd", lambda x: x),
+		("Matches", "matches", lambda x: x),
+		("Winrate", "winRate", lambda x: x),
+		("Minutes played", "minutesPlayed", lambda x: f"{x} minutes ({x / (24 * 60):.2f} days)"),
+		("Players outlived", "playersOutlived", lambda x: x),
+		("Last modified", "lastModified", lambda x: x),
 	]
 	embed.add_field(name="Level (current season)", value=level, inline=False)
 	for field in fields:
-		embed.add_field(name=field[0], value=stats.get(field[1]), inline=False)
-	await ctx.respond(embed=embed)
+		name, key, func = field
+		value = func(stats.get(key))
+		embed.add_field(name=name, value=value, inline=False)
 
-@discordClient.slash_command(description="See the biggest fish a user caught this season")
-async def fortnite_fish(ctx, username):
-	await ctx.respond("Fish collection is not present in this season.")
-	return
-	await ctx.defer()
-	new_record = False
-	r = fish_stats(username)
-	if r == "no":
-		await ctx.respond("User not found")
-		return
-	if r == 404:
-		await ctx.respond("Something went wrong")
-		return
-	r1 = fish_loot_pool()
-	biggest = 0
-	name = ""
-	current_season_fish = False
-	if len(r) < 1: #an empty list means a user's statistics have been set to private
-		await ctx.respond("Statistics for `" + username + "` have been set to private.")
-		return
-	for i in r['stats']:
-		if i['season'] == r1['season']: #looking for fish in the user's loot pool that are present in the current season
-			r = i['fish']
-			current_season_fish = True
-	if current_season_fish == False:
-		await ctx.respond("`" + username + "` hasn't caught any fish this season.")
-		return
-	for fish in r:
-		if fish['length'] > biggest:
-			biggest = fish['length']
-			name = fish['name']
-	rows = cursor.execute("SELECT fish_size FROM users WHERE username = ?", (username,),).fetchall()
-	if len(rows) < 1: #no record for this user in the database yet
-		cursor.execute("INSERT INTO users VALUES (?, ?, ?)", (username, name, biggest))
-		rows = cursor.execute("SELECT fish_size FROM users WHERE username = ?", (username,),).fetchall()
-	if(rows[0][0] < biggest): #API returned a bigger fish than what is present in the database
-		cursor.execute(
-			"UPDATE users SET fish_size = ?, fish_name = ? WHERE username = ?",
-			(biggest, name, username)
-		)
-		new_record = True
-	biggest_fish_loot = r1['fish']
-	biggest_loot = 0
-	for fish in biggest_fish_loot:
-		if fish['sizeMax'] > biggest_loot:
-			biggest_loot = fish['sizeMax'] #set the biggest fish currently obtainable this season
-	winner = cursor.execute("SELECT username, fish_name, fish_size FROM users WHERE fish_size = (SELECT MAX(fish_size) FROM users)").fetchall() 
-	embed = discord.Embed(title = "Biggest fish " + username + " caught in Season " + str(r1['season']))
-	if new_record == True:
-		embed.add_field(name="Name", value=name + "\n\nCongrats, it's a new personal best!", inline=True)
-	else:
-		embed.add_field(name="Name", value=name, inline=True)
-	embed.add_field(name="Size", value=str(biggest) + "cm", inline=True)
-	embed.add_field(name="Current record", value="The current record for biggest fish is a " + "**" + str(winner[0][2]) + "cm** " + "**" + winner[0][1] + "**" + " caught by " + "**" + winner[0][0] + "**!" + "\nThe largest obtainable fish this season is **" + str(biggest_loot) + "cm**.", inline=False)
 	await ctx.respond(embed=embed)
 
 @discordClient.slash_command(description="View the current Battle Royale map")
@@ -926,35 +856,6 @@ async def ping(ctx):
 async def fortnite_get_id(ctx, username):
 	await ctx.respond(getAccountID(username))
 
-@discordClient.slash_command(description="[Owner] Whitelist a character")
-async def whitelist(ctx, hex):
-	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
-		return
-	try:
-		cursor.execute("INSERT INTO whitelist VALUES(?)", (hex,))
-		await ctx.respond("Added ✅")
-	except:
-		await ctx.respond("Not a valid query")
-		return
-
-@discordClient.slash_command(description="[Owner] Blacklist a character")
-async def blacklist(ctx, hex):
-	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
-		return
-	try:
-		cursor.execute("INSERT INTO blacklist VALUES(?)", (hex,))
-		await ctx.respond("Added ✅")
-	except:
-		await ctx.respond("Not a valid query")
-		return
-
-@discordClient.slash_command()
-async def hexify(ctx, string):
-	hex_string = "".join([character.encode("utf-8").hex() for character in string])
-	await ctx.respond(hex_string, ephemeral=True)
-
 @discordClient.slash_command()
 async def delete_message_by_id(ctx, id):
 	if ctx.user.id != int(os.getenv('ME')):
@@ -968,11 +869,7 @@ async def delete_message_by_id(ctx, id):
 	except Exception as e:
 		await ctx.respond(e)
 
-@discordClient.slash_command()
-async def elevation(ctx, lat, long):
-	await ctx.respond(get_elevation(lat, long))
-
-@discordClient.slash_command(description="SIGKILL the bot's PID")
+@discordClient.slash_command(description="[Owner] SIGKILL the bot's PID")
 async def die(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
 		await ctx.respond("nice try bozo")
@@ -980,29 +877,6 @@ async def die(ctx):
 	await ctx.respond("Death request received 🫡")
 	os.kill(int(os.getpid()), signal.SIGKILL)
 	await discordClient.close()
-
-@discordClient.slash_command(description="Check the U91/E10 prices of all 7-Eleven stores in NSW")
-async def check_fuel(ctx):
-	await ctx.defer()
-	response = check_lowest_fuel_price_p03()
-	last_updated = response[1]
-	response = response[0]
-	db_price = cursor.execute("SELECT * FROM fuel").fetchone()[0]
-	print(type(db_price))
-	print(type(response['price']))
-	if db_price != response['price']:
-		print("Not the same as DB")
-	await ctx.respond(f"The cheapest fuel is {response['type']} at {response['suburb']} for {response['price']}. Last updated <t:{last_updated}:R>.")
-
-@discordClient.slash_command(description="Change Transmission's forwarding port")
-async def change_port(ctx, port_int):
-	host = os.getenv("TRANSMISSION_HOST")
-	port = os.getenv("TRANSMISSION_PORT")
-	username = os.getenv("TRANSMISSION_USERNAME")
-	password = os.getenv("TRANSMISSION_PASSWORD")
-	c = Client(host=host, port=port, username=username, password=password)
-	c.set_session(peer_port=int(port_int))
-	await ctx.respond("Port changed.")
 
 lego = discordClient.create_group("lego")
 
@@ -1067,7 +941,60 @@ async def list(ctx):
 
 @discordClient.slash_command(description="Generate an image with DALL-E 3")
 async def dalle3(ctx, prompt):
-	await ctx.reply(dalle_prompt(prompt))
+	await ctx.defer()
+	await ctx.respond(dalle_prompt(prompt))
+
+# @discordClient.event
+# async def on_message(message):
+# 	if message.author == discordClient.user and message.reference:
+# 		message_author = "assistant"
+# 		print("Message is a reply from bot to user, so it should be added to the thread.")
+# 	elif message.author == discordClient.user and not message.reference:
+# 		return
+# 	else:
+# 		message_author = "user"
+# 	if message.attachments:
+# 		for attachment in message.attachments:
+# 			attachment_type, attch_format = attachment.content_type.split('/')
+# 			if attachment_type == 'image':
+# 				add_to_thread(message_author, [
+# 										{"type": "text", "text": message.author.display_name + ": " + message.content if message.author != discordClient.user else message.content},
+# 										{"type": "image_url", "image_url": {"url": attachment.url, "detail": "high"}}
+# 									])
+# 			if attachment_type == 'video':
+# 				if attachment.size > 52428800:
+# 					await message.add_reaction("❌")
+# 					return
+# 				channel = discordClient.get_channel(int(os.getenv('CLIPS_CHANNEL')))
+# 				button = Button(label="Jump", style=discord.ButtonStyle.link, url=message.jump_url)
+# 				view = View()
+# 				view.add_item(button)
+# 				await channel.send(attachment.url, view=view)
+# 				await message.add_reaction("✅")
+# 	elif message.embeds:
+# 		for embed in message.embeds:
+# 			try:
+# 				add_to_thread(message_author, [
+# 											{"type": "text", "text": message.author.display_name + ": " + message.content if message.author != discordClient.user else message.content},
+# 											{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
+# 										])
+# 			except:
+# 				try:
+# 					add_to_thread(message_author, message.content)
+# 				except:
+# 					pass #no message content
+# 	else:
+# 		add_to_thread(message_author, message.content)
+# 	if discordClient.user in message.mentions or str(message.channel.type) == 'private':
+# 		async with message.channel.typing():
+# 			await message.reply(create_run())
+# 	if 'heh' in message.content.lower():
+# 		emoji = discordClient.get_emoji(int(os.getenv('HEH_EMOJI')))
+# 		await message.add_reaction(emoji)
+# 	if 'perhaps' in message.content.lower():
+# 		await message.add_reaction("🦀")
+# 	if '@everyone' in message.content.lower() and not message.channel.permissions_for(message.author).mention_everyone:
+# 		await message.channel.send(file=discord.File("assets/everyone.gif"))
 
 @discordClient.event
 async def on_message(message):
@@ -1078,7 +1005,7 @@ async def on_message(message):
 		await webhook.send(content=embed_tweets(message), username=message.author.name, avatar_url=message.author.avatar)
 		await message.delete()
 		return
-	if discordClient.user in message.mentions:
+	if discordClient.user in message.mentions or str(message.channel.type) == 'private':
 		async with message.channel.typing():
 			contents = []
 			initial_message = {"role": "system", "content": "You're a helpful and decisive lad that LOVES Fortnite and answers any questions. Even if the questions aren't fortnite-related, you manage to sneak a Fortnite reference into each answer."}
@@ -1090,17 +1017,19 @@ async def on_message(message):
 				messages = await message.channel.history(limit=10).flatten()
 			messages.reverse()
 			for msg in messages:
-				if not msg.attachments and not msg.embeds:
-					contents.append({"role": "user" if msg.author != discordClient.user else "assistant", "content": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content})
-				else:
+				if msg.embeds:
 					for embed in msg.embeds:
-						contents.append({
-								"role": "user" if msg.author != discordClient.user else "assistant",
-								"content": [
-									{"type": "text", "text": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content},
-									{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
-								]
-							})
+						try:
+							contents.append({
+									"role": "user" if msg.author != discordClient.user else "assistant",
+									"content": [
+										{"type": "text", "text": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content},
+										{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
+									]
+								})
+						except:
+							pass #probably no thumbnail url :/
+				elif message.attachments:
 					for attachment in msg.attachments:
 						attachment_type, attch_format = attachment.content_type.split('/')
 						if attachment_type == 'image':
@@ -1111,73 +1040,26 @@ async def on_message(message):
 									{"type": "image_url", "image_url": {"url": attachment.url, "detail": "high"}}
 								]
 							})
-			print(contents)
-			await message.reply(openai_chat(contents), mention_author=False)
-
-	urls = re.findall(r'(https?:\/\/)([\w\-_]+(?:(?:\.[\w\-_]+)+))([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?', message.content)
-	if urls:
-		await asyncio.sleep(1)
-		embeds = message.embeds
-		if embeds:
-			for embed in embeds:
-				logos = detect_logos_uri(embed.thumbnail.url)
-				for logo in logos:
-					cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
-				if logos:
-					await message.add_reaction("👀")
-
-	if not urls:
-		if len(message.content) > 125:
-			classify = classify_text(message.content)
-			if classify:
-				for category in classify:
-					if category.confidence > 49:
-						cursor.execute("INSERT INTO ai_text VALUES (?, ?, ?)", [message.id, category.name, category.confidence])
-						await message.add_reaction("💡")
-	
+				else:
+					contents.append({"role": "user" if msg.author != discordClient.user else "assistant", "content": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content})
+			await message.reply(openai_chat(contents), mention_author=False)	
 	for attachment in message.attachments:
 		attachment_type, attch_format = attachment.content_type.split('/')
 		if attachment_type == 'video':
 			if attachment.size > 52428800:
-				await message.add_reaction("❌")
-				return
+				link_message = attachment.url + "Media is too large to embed - please jump to the original message"
+			else:
+				link_message = attachment.url
 			channel = discordClient.get_channel(int(os.getenv('CLIPS_CHANNEL')))
 			button = Button(label="Jump", style=discord.ButtonStyle.link, url=message.jump_url)
 			view = View()
 			view.add_item(button)
-			await channel.send(attachment.url, view=view)
+			await channel.send(link_message, view=view)
 			await message.add_reaction("✅")
 		if attachment_type == 'audio':
 			await attachment.save("audio.mp3")
 			response = transcribe_audio("audio.mp3")
 			await message.channel.send(response.text)
-		if attachment_type == 'image':
-			myuuid = str(uuid.uuid4())
-			await attachment.save(myuuid)
-			await asyncio.sleep(2)
-			logos = detect_logos(myuuid)
-			for logo in logos:
-				cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, logo.description, logo.score])
-			if logos:
-				await message.add_reaction("👀")
-			if not logos:
-				labels = detect_labels(myuuid)
-				for label in labels:
-					cursor.execute("INSERT INTO ai VALUES (?, ?, ?)", [message.id, label.description, label.score])
-					label.description = label.description.lower()
-					if 'squirrel' in label.description:
-						await message.channel.send("it's andrew")
-						return
-					if 'dog' in label.description:
-						await message.channel.send("rat")
-						return
-					if 'electric blue' in label.description:
-						await message.add_reaction("⚡")
-						await message.add_reaction("🟦")
-				if labels:
-					await message.add_reaction("👀")
-			if os.path.exists(myuuid):
-				os.remove(myuuid)
 	if 'heh' in message.content.lower():
 		emoji = discordClient.get_emoji(int(os.getenv('HEH_EMOJI')))
 		await message.add_reaction(emoji)
@@ -1223,8 +1105,6 @@ async def on_reaction_add(reaction, user):
 async def on_member_update(before, after):
     if before == discordClient.user or not after.nick:
         return
-    if re.search(aldi_regex, after.nick):
-        await after.edit(nick='loser')
 
 @discordClient.event
 async def on_member_remove(member):
