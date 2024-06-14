@@ -235,15 +235,16 @@ async def lego_bg():
 
 			if differences_exist:
 				embed = discord.Embed(title=item2[1], url=product_url + item2[3])
-				embed.set_thumbnail(url=item2[2])
+				if embed:
+					embed.set_thumbnail(url=item2[2])
 
-				field_names = ['Availability', 'On sale', 'Price']
-
-				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
-					field_value = f"~~{old_value}~~\n{new_value}" if old_value != new_value else new_value
-					embed.add_field(name=name, value=field_value, inline=False)
-
-				await channel.send(embed=embed)
+					field_names = ['Availability', 'On sale', 'Price']
+	
+					for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
+						field_value = f"~~{old_value}~~\n{new_value}" if old_value != new_value else new_value
+						embed.add_field(name=name, value=field_value, inline=False)
+	
+					await channel.send(embed=embed)
 
 	# except Exception as e:
 	# 	await channel.send(f"Exception: {e}")

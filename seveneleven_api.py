@@ -1,6 +1,12 @@
 import requests
 import sqlite3 as sl
 
+class CustomException(Exception):
+    """Custom exception class"""
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
 
@@ -43,10 +49,12 @@ def check_lowest_fuel_price():
         return e
 
 def check_lowest_fuel_price_p03():
+    attempted_json = False
     try:
         response = requests.get("https://projectzerothree.info/api.php?format=json")
         response.raise_for_status()
         response = response.json()
+        attempted_json = True
         updated = response['updated']
         cheapest_nsw = response['regions'][2]
         min_price = min(filter(lambda x: x["type"] in ["U91"], cheapest_nsw["prices"]),key=lambda x: x["price"])
@@ -54,4 +62,9 @@ def check_lowest_fuel_price_p03():
     except requests.exceptions.HTTPError as e:
         return e
     except Exception as e:
+        if not attempted_json:
+            try:
+                raise CustomException("Unable to access respons json. Object not subscriptable")
+            except Exception as e:
+                return e
         return e
