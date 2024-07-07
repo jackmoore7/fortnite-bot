@@ -3,8 +3,6 @@ import sqlite3 as sl
 from bs4 import BeautifulSoup
 import json
 import urllib.parse
-import certifi
-print(certifi.where())
 
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
@@ -22,49 +20,6 @@ def update_build_number():
         if build_id != build_version:
             cursor.execute("UPDATE coles_version SET version = ?", (build_id,))
             print(f"Coles API version number was updated to {build_id}")
-
-def get_item_by_id(id):
-    build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
-    url = "https://www.coles.com.au/_next/data/"
-    r = requests.get(url + build_version + "/en/product/" + str(id) + ".json", headers=headers, verify=False)
-    print(r)
-    if r.status_code == 404:
-        update_build_number()
-        build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
-        r = requests.get(url + build_version + "/en/product/" + str(id) + ".json", headers=headers, verify=False)
-        if r.status_code == 404:
-            return f"{id} returned a 404. Build number does not need updating."
-    r = r.json()
-    product = r['pageProps']['__N_REDIRECT']
-    r = requests.get(url + build_version + "/en" + product + ".json", headers=headers, verify=False)
-    r = r.json()
-    id = r['pageProps']['product']['id']
-    name = r['pageProps']['product']['name']
-    brand = r['pageProps']['product']['brand']
-    description = r['pageProps']['product']['description']
-    image_url = "https://productimages.coles.com.au/productimages" + r['pageProps']['product']['imageUris'][0]['uri']
-    try:
-        current_price = r['pageProps']['product']['pricing']['now']
-    except TypeError:
-        current_price = None
-    if r.get('pageProps') and r['pageProps'].get('product') and r['pageProps']['product'].get('pricing') and r['pageProps']['product']['pricing'].get('promotionType'):
-        on_sale = True
-    else:
-        on_sale = False
-    available = r['pageProps']['product']['availability']
-    if r.get('pageProps') and r['pageProps'].get('product') and r['pageProps']['product'].get('pricing') and r['pageProps']['product']['pricing'].get('offerDescription'):
-        offer_description = r['pageProps']['product']['pricing']['offerDescription']
-    else:
-        offer_description = ""
-    if r.get('pageProps') and r['pageProps'].get('product') and r['pageProps']['product'].get('pricing') and r['pageProps']['product']['pricing'].get('multiBuyPromotion'):
-        multibuy_unit_price = r['pageProps']['product']['pricing']['multiBuyPromotion']['reward']
-    else:
-        multibuy_unit_price = ""
-    if r.get('pageProps') and r['pageProps'].get('product') and r['pageProps']['product'].get('pricing') and r['pageProps']['product']['pricing'].get('promotionType'):
-        promotion_type = r['pageProps']['product']['pricing']['promotionType']
-    else:
-        promotion_type = ""
-    return (id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price, image_url, promotion_type)
     
 def search_item(query):
     query = urllib.parse.quote(query)
@@ -80,3 +35,42 @@ def search_item(query):
     r = r.json()
     results = r['pageProps']['searchResults']
     return results
+
+def get_items(id_list):
+    item_list = []
+    ids_string = ",".join(map(str, id_list))
+    payload = {"productIds":ids_string}
+    url = "https://coles.com.au/api/products"
+    r = requests.post(url, headers=headers, json=payload, verify=False)
+    r = r.json()
+    for item in r['results']:
+        id = item['id']
+        name = item['name']
+        brand = item['brand']
+        description = item['description']
+        image_url = "https://productimages.coles.com.au/productimages" + item['imageUris'][0]['uri']
+        try:
+            current_price = item['pricing']['now']
+        except TypeError:
+            current_price = None
+        if item.get('pricing') and item['pricing'].get('promotionType'):
+            on_sale = True
+            promotion_type = item['pricing']['promotionType']
+        else:
+            on_sale = False
+            promotion_type = ""
+        available = item['availability']
+        if item.get('pricing') and item['pricing'].get('offerDescription'):
+            offer_description = item['pricing']['offerDescription']
+        else:
+            offer_description = ""
+        if item.get('pricing') and item['pricing'].get('multiBuyPromotion'):
+            multibuy_unit_price = item['pricing']['multiBuyPromotion']['reward']
+        else:
+            multibuy_unit_price = ""
+        item_list.append([id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price, image_url, promotion_type])
+    data = {
+        "invalid_ids": r['invalidProducts'],
+        "items": item_list
+    }
+    return data

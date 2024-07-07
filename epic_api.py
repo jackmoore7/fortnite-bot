@@ -15,7 +15,6 @@ def get_fortnite_status(): #need to use the fortnite client token
     r = requests.get(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401: #key expired, generate a new one. expires every 4 hours.
         x = dt.now().isoformat()
-        print("New Fortnite client token needed at " + str(x))
         get_account_key_fortnitePCGameClient()
         sleep(2)
         return get_fortnite_status()
@@ -31,7 +30,6 @@ def get_fortnite_update_manifest(): #need to use the launcher client token
     r = requests.get(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401: #key expired, generate a new one. expires every 4 hours.
         x = dt.now().isoformat()
-        print("New launcher token needed at " + str(x))
         get_account_key_launcherAppClient2()
         sleep(2)
         return get_fortnite_update_manifest()
@@ -52,7 +50,6 @@ def get_fortnite_shop_item_details(id):
     r = requests.get(url, params=params, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401:
         x = dt.now().isoformat()
-        print("New device auth token needed at " + str(x))
         get_device_auth_2()
         sleep(2)
         return get_fortnite_shop_item_details(id)
@@ -65,7 +62,6 @@ def add_friend(user_id):
     r = requests.post(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401:
         x = dt.now().isoformat()
-        print("New device auth token needed at " + str(x))
         get_device_auth_2()
         sleep(2)
         return add_friend(user_id)
@@ -81,7 +77,6 @@ def get_all_friends(include_pending: bool = False):
     r = requests.get(url, params=params, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401:
         x = dt.now().isoformat()
-        print("New device auth token needed at " + str(x))
         get_device_auth_2()
         sleep(2)
         return get_all_friends()
@@ -93,7 +88,6 @@ def get_user_by_id(user_id):
     r = requests.get(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401:
         x = dt.now().isoformat()
-        print("New device auth token needed at " + str(x))
         get_device_auth_2()
         sleep(2)
         return get_user_by_id(user_id)
@@ -106,7 +100,6 @@ def get_user_presence(user_id):
     r = requests.get(url, headers={"Content-Type":"application/x-www-form-urlencoded", "Authorization":"Bearer " + key})
     if r.status_code == 401:
         x = dt.now().isoformat()
-        print("New device auth token needed at " + str(x))
         get_device_auth_2()
         sleep(2)
         return get_user_presence()

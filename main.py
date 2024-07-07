@@ -175,11 +175,18 @@ async def coles_specials_bg():
 		channel = discordClient.get_channel(int(os.getenv('COLES_SPECIALS_CHANNEL')))
 		product_url = "https://www.coles.com.au/product/"
 		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
+		item_ids = cursor.execute("SELECT id FROM coles_specials").fetchall()
+		item_ids_list = []
+		for id in item_ids:
+			item_ids_list.append(id[0])
+		results = get_items(item_ids_list)
+		invalid_ids = results['invalid_ids']
+		if len(invalid_ids) > 0:
+			await channel.send("Couldn't find any products with these IDs: " + str(invalid_ids))
+		results = results['items']
 		items_new = []
-		for product in items:
-			result = get_item_by_id(product[0])
-			if result:
-				items_new.append(result)
+		for item in results:
+			items_new.append(item)
 		if items != items_new:
 			for item in items_new:
 				cursor.execute("UPDATE coles_specials SET available = ?, on_sale = ?, current_price = ? WHERE id = ?", (item[6], item[5], item[4], item[0]))
@@ -610,7 +617,8 @@ async def edit(ctx, id):
 		await ctx.respond("nice try bozo")
 	else:
 		await ctx.defer()
-		result = get_item_by_id(id)
+		result = get_items([id])
+		result = result['items'][0]
 		if result:
 			id = result[0]
 			name = result[1]
