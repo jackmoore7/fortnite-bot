@@ -8,7 +8,7 @@ import openai
 
 from openai import OpenAI
 
-from third_party_api import *
+from imports.api.api_third_party import *
 
 client = OpenAI(
   organization='org-p1aVCCHYJSv1GGzoauKukfql',

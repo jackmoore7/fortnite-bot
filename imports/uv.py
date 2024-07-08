@@ -1,7 +1,8 @@
-from datetime import datetime as dt
 import pytz
 import os
 import requests
+
+from datetime import datetime as dt
 
 def get_arpansa_data():
     current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
