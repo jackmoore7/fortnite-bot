@@ -718,7 +718,7 @@ async def get_username(ctx, id):
 @discordClient.slash_command(description="Return when a user was last online")
 async def get_last_online(ctx, username):
 	await ctx.defer()
-	account_id = getAccountID(username)
+	account_id = get_account_id(username)
 	await asyncio.sleep(3)
 	e = get_user_presence(account_id)
 	if e:
@@ -869,7 +869,7 @@ async def ping(ctx):
 
 @discordClient.slash_command(description="Get a user's Epic Games ID")
 async def fortnite_get_id(ctx, username):
-	await ctx.respond(getAccountID(username))
+	await ctx.respond(get_account_id(username))
 
 @discordClient.slash_command()
 async def delete_message_by_id(ctx, id):

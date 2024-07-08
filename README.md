@@ -57,5 +57,7 @@ Get updates when a product you're tracking changes. This can include price, prom
 ### Search
 Search for an item. Uses a Discord embed with pagination. Doesn't work very well because the way Lego's search function works is absolutely wack.
 
+## Miscellaneous
+
 ### Train Game
 Find all solutions to the 'train game'. Given a four digit number (0000-9999), get to the number 10 using addition, subtraction, multiplication, division, and exponentiation.
