@@ -7,21 +7,35 @@ import re
 import uuid
 import asyncio
 import feedparser
+import sqlite3 as sl
+import imghdr
+import faulthandler, signal
+import logging
+import heartrate
+import itertools
+import copy
+
 from datetime import datetime as dt, timedelta
 from datetime import time
 from time import mktime
 from discord.ext import tasks
 from discord.ext.pages import Paginator, Page
 from discord.ui import Button, View
-import sqlite3 as sl
 from dotenv import load_dotenv
-import imghdr
-import faulthandler, signal
 from PIL import Image
 from bs4 import BeautifulSoup
-import logging
 from systemd.journal import JournalHandler
-import heartrate
+
+from imports.gcloud import *
+from imports.third_party_api import *
+from imports.key_handling import *
+from imports.epic_api import *
+from imports.coles import *
+from imports.uv import *
+from imports.openai_api import *
+from imports.lego_api import *
+from imports.ephemeral_port import *
+from imports.seveneleven_api import *
 
 heartrate.trace(browser=True, host='0.0.0.0')
 
@@ -39,17 +53,6 @@ load_dotenv()
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.getenv('GOOGLE_KEY')
 
-from gcloud import *
-from third_party_api import *
-from key_handling import *
-from epic_api import *
-from coles import *
-from uv import *
-from openai_api import *
-from lego_api import *
-from ephemeral_port import *
-from seveneleven_api import *
-
 intents = discord.Intents.all()
 intents.members = True
 
@@ -60,13 +63,19 @@ cursor = con.cursor()
 
 tasks_list = {}
 
+nice_try = "nice try bozo"
+removed = "Removed ✅"
+added = "Added ✅"
+time_format = '%Y-%m-%dT%H:%M:%S.%fZ'
+timezone = pytz.timezone('Australia/Sydney')
+
 def timestampify(string):
 	date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S%z')
 	struct_time = date_time_obj.timetuple()
 	return f"<t:{int(mktime(struct_time))}:R>"
 
 def timestampify_z(string):
-	date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+	date_time_obj = dt.strptime(string, time_format)
 	struct_time = date_time_obj.timetuple()
 	return f"<t:{int(mktime(struct_time))}:R>"
 
@@ -224,14 +233,14 @@ async def lego_bg():
 			result = get_lego_item_by_id(item[0])
 			if result:
 				result = result['data']['product']
-				id = int(result['productCode'])
+				product_code = int(result['productCode'])
 				name = result['name']
 				image_url = result['baseImgUrl']
 				slug = result['slug']
 				availability = result['variant']['attributes']['availabilityText']
 				on_sale = result['variant']['attributes']['onSale']
 				price = result['variant']['price']['formattedAmount']
-				items_new.append((id, name, image_url, slug, availability, on_sale, price))
+				items_new.append((product_code, name, image_url, slug, availability, on_sale, price))
 
 		if items_old != items_new:
 			for item in items_new:
@@ -391,19 +400,19 @@ async def epic_free_games():
 
 	def timestampify_and_convert_to_aest(string):
 		utc_timezone = pytz.timezone('UTC')
-		sydney_timezone = pytz.timezone('Australia/Sydney')
-		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+		our_timezone = timezone
+		date_time_obj = dt.strptime(string, time_format)
 		date_time_obj = utc_timezone.localize(date_time_obj)
-		sydney_time = date_time_obj.astimezone(sydney_timezone)
-		struct_time = sydney_time.timetuple()
+		our_time = date_time_obj.astimezone(our_timezone)
+		struct_time = our_time.timetuple()
 		timestamp = f"<t:{int(mktime(struct_time))}:R>"
 		return timestamp
 
 	def test_time(string):
-		sydney_timezone = pytz.timezone('Australia/Sydney')
-		end_dt = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
-		end_dt = sydney_timezone.localize(end_dt)
-		current_dt = dt.now(sydney_timezone)
+		our_timezone = timezone
+		end_dt = dt.strptime(string, time_format)
+		end_dt = our_timezone.localize(end_dt)
+		current_dt = dt.now(our_timezone)
 		if current_dt > end_dt:
 			return True
 		else:
@@ -411,11 +420,11 @@ async def epic_free_games():
 		
 	def convert_to_aest(string):
 		utc_timezone = pytz.timezone('UTC')
-		sydney_timezone = pytz.timezone('Australia/Sydney')
-		date_time_obj = dt.strptime(string, '%Y-%m-%dT%H:%M:%S.%fZ')
+		our_timezone = timezone
+		date_time_obj = dt.strptime(string, time_format)
 		date_time_obj = utc_timezone.localize(date_time_obj)
-		sydney_time = date_time_obj.astimezone(sydney_timezone)
-		new_string = sydney_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+		our_time = date_time_obj.astimezone(our_timezone)
+		new_string = our_time.strftime(time_format)
 		return new_string
 
 	games_list = get_free_games()
@@ -474,8 +483,8 @@ async def arpansa():
 	try:
 		ch = discordClient.get_channel(int(os.getenv('UV_CHANNEL')))
 		role = os.getenv('SUNSCREEN_ROLE')
-		current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
-		current_time = (dt.now(pytz.timezone('Australia/Sydney'))-timedelta(minutes=1)).strftime('%H:%M')
+		current_date = dt.now(timezone).strftime('%Y-%m-%d')
+		current_time = (dt.now(timezone)-timedelta(minutes=1)).strftime('%H:%M')
 		db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
 		data = get_arpansa_data()
 		current_uv = float(data['CurrentUVIndex'])
@@ -533,12 +542,12 @@ async def ozb_bangers():
 			downvotes = int(post['ozb_meta']['votes-neg'])
 			try:
 				prefix = f"[{post['ozb_title-msg']['type'].upper()}]"
-			except:
+			except Exception:
 				prefix = ''
 			if (upvotes >= 250 and downvotes < 10) and (post['link'] not in [x[0] for x in posted]) and (prefix != '[EXPIRED]'):
 				try:
 					expiry = timestampify(post['ozb_meta']['expiry'])
-				except:
+				except Exception:
 					expiry = "Unknown"
 				title = post['title']
 				link = post['link']
@@ -573,7 +582,7 @@ async def fuel_check():
 	channel = discordClient.get_channel(int(os.getenv('FUEL_CHANNEL')))
 	try:
 		response = check_lowest_fuel_price_p03()
-		last_updated = response[1]
+		# last_updated = response[1]
 		response = response[0]
 		db_price = cursor.execute("SELECT * FROM fuel").fetchone()[0]
 		if db_price != str(response['price']):
@@ -599,9 +608,7 @@ async def search(ctx, string):
 		results_list = [(product['id'], product['name'], product['brand'], product['imageUris'][0]['uri']) for product in results if ('adId' not in product or not product['adId']) and 'id' in product]
 		pages = []
 		for item in results_list:
-			embed = discord.Embed(
-				title = f"{item[2]} {item[1]}"
-			)
+			embed = discord.Embed(title = f"{item[2]} {item[1]}")
 			embed.set_image(url=url + item[3])
 			embed.add_field(name="ID", value=item[0])
 			embed.set_footer(text=f"Returned {num_results} results")
@@ -612,27 +619,27 @@ async def search(ctx, string):
 		await ctx.respond("Something went wrong. Please try again.")
 
 @coles.command(description="[Owner] Add or remove an item")
-async def edit(ctx, id):
+async def edit(ctx, item_id):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 	else:
 		await ctx.defer()
-		result = get_items([id])
+		result = get_items([item_id])
 		result = result['items'][0]
 		if result:
-			id = result[0]
+			item_id = result[0]
 			name = result[1]
 			brand = result[2]
 			description = result[3]
 			current_price = result[4]
 			on_sale = result[5]
 			available = result[6]
-			result_db = cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (id,)).fetchone()
+			result_db = cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (item_id,)).fetchone()
 			if result_db:
-				cursor.execute("DELETE FROM coles_specials WHERE id = ?", (id,))
+				cursor.execute("DELETE FROM coles_specials WHERE id = ?", (item_id,))
 				await ctx.respond(f"Removed {brand} {name} from your list")
 			else:
-				cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, brand, description, current_price, on_sale, available))
+				cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?, ?)", (item_id, name, brand, description, current_price, on_sale, available))
 				await ctx.respond(f"Added {brand} {name} to your list")
 		else:
 			await ctx.respond(result)
@@ -640,20 +647,20 @@ async def edit(ctx, id):
 @coles.command(description="[Owner] View your tracked items")
 async def list(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 	else:
 		try:
 			tracked = cursor.execute("SELECT * FROM coles_specials")
 			embed = discord.Embed(title = "Items you're tracking")
 			for item in tracked:
-				id = item[0]
+				item_id = item[0]
 				name = item[1]
 				brand = item[2]
 				current_price = item[4]
 				on_sale = item[5]
 				available = item[6]
 				compact_info = f"**Brand**: {brand}\n**Price**: ${current_price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {'Available' if available else 'Unavailable'}"
-				embed.add_field(name=f"{id} - {name}", value=compact_info, inline=False)
+				embed.add_field(name=f"{item_id} - {name}", value=compact_info, inline=False)
 			await ctx.respond(embed=embed)
 		except Exception as e:
 			await ctx.respond(f"Couldn't get list: {e}")
@@ -662,7 +669,7 @@ async def list(ctx):
 async def edit_message(ctx, id, content):
 	try:
 		if ctx.user.id != int(os.getenv('ME')):
-			await ctx.respond("nice try bozo")
+			await ctx.respond(nice_try)
 		else:
 			channel = ctx.channel
 			msg = await channel.fetch_message(id)
@@ -675,7 +682,7 @@ async def edit_message(ctx, id, content):
 @discordClient.slash_command(description="[Owner] Stop an internal task")
 async def stop_task(ctx, task_name):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 	else:
 		try:
 			task = tasks_list.get(task_name)
@@ -690,7 +697,7 @@ async def stop_task(ctx, task_name):
 @discordClient.slash_command(description="[Owner] Add friend")
 async def add_friend(ctx, user_id):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 	else:
 		e = add_friend(user_id)
 		await ctx.respond(e)
@@ -698,7 +705,7 @@ async def add_friend(ctx, user_id):
 @discordClient.slash_command(description="[Owner] List all friends")
 async def list_friends(ctx, include_pending=''):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 	else:
 		e = get_all_friends(include_pending)
 		await ctx.respond(e)
@@ -711,9 +718,9 @@ async def get_username(ctx, id):
 @discordClient.slash_command(description="Return when a user was last online")
 async def get_last_online(ctx, username):
 	await ctx.defer()
-	id = getAccountID(username)
+	account_id = get_account_id(username)
 	await asyncio.sleep(3)
-	e = get_user_presence(id)
+	e = get_user_presence(account_id)
 	if e:
 		await ctx.respond(f"{username} was last online at {e}")
 	else:
@@ -722,7 +729,7 @@ async def get_last_online(ctx, username):
 @discordClient.slash_command(description="[Owner] Clear messages")
 async def purge(ctx, amount):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 		return
 	await ctx.defer()
 	await ctx.channel.purge(limit=int(amount)+1, bulk=True)
@@ -735,10 +742,10 @@ async def sunscreen(ctx):
 		return
 	if role in ctx.user.roles:
 		await ctx.user.remove_roles(role)
-		await ctx.respond("Removed ✅")
+		await ctx.respond(removed)
 	else:
 		await ctx.user.add_roles(role)
-		await ctx.respond("Added ✅")
+		await ctx.respond(added)
 
 notifyme = discordClient.create_group("notifyme", "Get notified when an item you want is in the shop")
 
@@ -751,13 +758,13 @@ async def edit(ctx, item):
 	if text_check:
 		await ctx.respond("Not a valid string. [a-z0-9\s\-'] only.")
 		return
-	id = ctx.user.id
-	if len(cursor.execute("SELECT * FROM shop_ping WHERE item = ? AND id = ?", (item, id)).fetchall()) > 0:
-		cursor.execute("DELETE FROM shop_ping WHERE item = ? AND id = ?", (item, id))
-		await ctx.respond("Removed ✅")
+	user_id = ctx.user.id
+	if len(cursor.execute("SELECT * FROM shop_ping WHERE item = ? AND id = ?", (item, user_id)).fetchall()) > 0:
+		cursor.execute("DELETE FROM shop_ping WHERE item = ? AND id = ?", (item, user_id))
+		await ctx.respond(removed)
 		return
-	cursor.execute("INSERT INTO shop_ping VALUES (?, ?)", (id, item))
-	await ctx.respond("Added ✅")
+	cursor.execute("INSERT INTO shop_ping VALUES (?, ?)", (user_id, item))
+	await ctx.respond(added)
 
 @notifyme.command(description="View the list of cosmetics you want notifications for")
 async def list(ctx):
@@ -770,19 +777,19 @@ async def update(ctx):
 	upd8 = ctx.guild.get_role(int(os.getenv('UPD8_ROLE')))
 	if upd8 in ctx.user.roles:
 		await ctx.user.remove_roles(upd8)
-		await ctx.respond("Removed ✅")
+		await ctx.respond(removed)
 	else:
 		await ctx.user.add_roles(upd8)
-		await ctx.respond("Added ✅")
+		await ctx.respond(added)
 
 @discordClient.slash_command(description="Check a user's all-time Fortnite statistics")
 async def fortnite(ctx, username):
 	r = fortnite_br_stats(username)
 	if r.json()['status'] == 403:
-		await ctx.respond("`" + username + "`" + " set their stats to private")
+		await ctx.respond("`" + username + "` set their stats to private")
 		return
 	if r.json()['status'] != 200:
-		await ctx.respond("`" + username + "`" " doesn't exist or hasn't played any games yet")
+		await ctx.respond("`" + username + "` doesn't exist or hasn't played any games yet")
 		return
 	data = r.json()['data']
 	name = data['account']['name']
@@ -836,7 +843,7 @@ async def fortnite_map(ctx):
 async def sql_fetchall(ctx, query):
 	print(ctx.user.id)
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 	else:
 		try:
 			q = cursor.execute(query).fetchall()
@@ -848,7 +855,7 @@ async def sql_fetchall(ctx, query):
 async def sql(ctx, query):
 	print(ctx.user.id)
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 	else:
 		try:
 			cursor.execute(query)
@@ -862,12 +869,12 @@ async def ping(ctx):
 
 @discordClient.slash_command(description="Get a user's Epic Games ID")
 async def fortnite_get_id(ctx, username):
-	await ctx.respond(getAccountID(username))
+	await ctx.respond(get_account_id(username))
 
 @discordClient.slash_command()
 async def delete_message_by_id(ctx, id):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 		return
 	try:
 		channel = ctx.channel
@@ -880,7 +887,7 @@ async def delete_message_by_id(ctx, id):
 @discordClient.slash_command(description="[Owner] SIGKILL the bot's PID")
 async def die(ctx):
 	if ctx.user.id != int(os.getenv('ME')):
-		await ctx.respond("nice try bozo")
+		await ctx.respond(nice_try)
 		return
 	await ctx.respond("Death request received 🫡")
 	os.kill(int(os.getpid()), signal.SIGKILL)
@@ -897,10 +904,7 @@ async def search(ctx, string):
 		num_results = products['total']
 		results = products['results']
 		for item in results:
-			embed = discord.Embed(
-				title=item['name'],
-				url=product_url + item['slug']
-			)
+			embed = discord.Embed(title=item['name'], url=product_url + item['slug'])
 			embed.set_image(url=item['baseImgUrl'])
 			embed.add_field(name="Price", value=item['variant']['price']['formattedAmount'], inline=True)
 			embed.add_field(name="Availability", value=item['variant']['attributes']['availabilityText'])
@@ -938,19 +942,137 @@ async def list(ctx):
 	tracked = cursor.execute("SELECT * FROM lego")
 	embed = discord.Embed(title = "Items you're tracking")
 	for item in tracked:
-		id = item[0]
+		item_id = item[0]
 		name = item[1]
 		availability = item[4]
 		on_sale = item[5]
 		price = item[6]
 		compact_info = f"**Name**: {name}\n**Price**: {price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {availability}"
-		embed.add_field(name=f"{id} - {name}", value=compact_info, inline=False)
+		embed.add_field(name=f"{item_id} - {name}", value=compact_info, inline=False)
 	await ctx.respond(embed=embed)
 
 @discordClient.slash_command(description="Generate an image with DALL-E 3")
 async def dalle3(ctx, prompt):
 	await ctx.defer()
 	await ctx.respond(dalle_prompt(prompt))
+
+def attempt_get_x(x, nums, current_total, current_operations:list[str]):
+	successions = []
+	if len(nums) < 1 or len(nums) > 4: # something wrong happened
+		return successions
+	
+	# remove the first item cause we're using it now
+	current_num = nums[0]
+	nums = nums[1:]
+	
+	if len(nums) == 3: # first number (remember, we took one off)
+		attempt = attempt_get_x(x, nums, current_num, [str(current_num)])
+		if attempt is not None:
+			successions.append(attempt)
+	else:
+		# make a new copy of what we've done, then add on what we're going to do
+		ops_add = copy.deepcopy(current_operations)
+		ops_sub = copy.deepcopy(current_operations)
+		ops_mul = copy.deepcopy(current_operations)
+		ops_div = copy.deepcopy(current_operations)
+		ops_pow = copy.deepcopy(current_operations)
+
+		ops_add.append('+')
+		ops_sub.append('-')
+		ops_mul.append('*')
+		ops_div.append('/')
+		ops_pow.append('^')
+
+		ops_add.append(str(current_num))
+		ops_sub.append(str(current_num))
+		ops_mul.append(str(current_num))
+		ops_div.append(str(current_num))
+		ops_pow.append(str(current_num))
+
+		if len(nums) == 0: # last number, no more recursion
+			if ops_add is not None and current_total + current_num == x:
+				successions.append(ops_add)
+			if ops_sub is not None and current_total - current_num == x:
+				successions.append(ops_sub)
+			if ops_mul is not None and current_total * current_num == x:
+				successions.append(ops_mul)
+			if ops_div is not None and current_num != 0 and current_total / current_num == x:
+				successions.append(ops_div)
+			if ops_pow is not None and pow(current_total, current_num) == x:
+				successions.append(ops_pow)
+		else: # numbers in between
+			attempt = attempt_get_x(x, nums, current_total + current_num, ops_add)
+			if attempt is not None:
+				successions.append(attempt)
+			attempt = attempt_get_x(x, nums, current_total - current_num, ops_sub)
+			if attempt is not None:
+				successions.append(attempt)
+			attempt = attempt_get_x(x, nums, current_total * current_num, ops_mul)
+			if attempt is not None:
+				successions.append(attempt)
+			if current_num != 0:
+				attempt = attempt_get_x(x, nums, current_total / current_num, ops_div)
+				if attempt is not None:
+					successions.append(attempt)
+			attempt = attempt_get_x(x, nums, pow(current_total, current_num), ops_pow)
+			if attempt is not None:
+				successions.append(attempt)
+
+	return successions
+
+def get_to_x(x, a, b, c, d):
+	# so many loops
+	successions = []
+	for permutation in list(itertools.permutations([a, b, c, d])):
+		attempt = attempt_get_x(x, permutation, 0, [])
+		if attempt is not None:
+			successions.append(attempt)
+
+	for _ in range(0, 4): # the list looks like ass if you don't do this (flatten 4 times cause 4 numbers deep)
+		successions = list(itertools.chain.from_iterable(successions))
+	
+	solutions = set()
+	for success in successions:
+		solution = ""
+		for character in success:
+			solution += character
+		solution = solution.replace("+0","").replace("-0", "").replace("0*0", "").replace("0+", "").replace("0-", "")
+		if solution[0] == "+":
+			solution = solution[1:]
+		solutions.add(solution)
+
+	return sorted(solutions)
+
+def format_train_solution(solutions):
+	if len(solutions) <= 1:
+		return solutions # nothing needed
+	response = str(solutions[0])
+	while len(solutions) > 0:
+		solutions = solutions[1:]
+		response += "\n" + str(solutions[0])
+	return response
+
+@discordClient.slash_command(description="Train game - get to 10")
+async def get_to_ten(ctx, number):
+	try:
+		if len(number) != 4:
+			await ctx.respond("Please give a four digit number (0000-9999)")
+		else:
+			a = int(number[0]) # these will raise an exception if they can't convert
+			b = int(number[1])
+			c = int(number[2])
+			d = int(number[3])
+			response = get_to_x(10, a, b, c, d)
+			response = format_train_solution(response)
+			if len(response) == 0:
+				await ctx.respond("There are no solutions for `" + str(number) + "`")
+			else:
+				embed = discord.Embed(title="Results for train game with number " + str(number))
+				title = "All " + str(len(response)) + " solutions"
+				embed.add_field(name=title, value=response)
+				await ctx.respond(response)
+	except Exception as e:
+		await ctx.respond(f"ruh roh {e}")
 
 # @discordClient.event
 # async def on_message(message):
@@ -1035,11 +1157,11 @@ async def on_message(message):
 										{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
 									]
 								})
-						except:
+						except Exception:
 							pass #probably no thumbnail url :/
 				elif message.attachments:
 					for attachment in msg.attachments:
-						attachment_type, attch_format = attachment.content_type.split('/')
+						attachment_type, _ = attachment.content_type.split('/')
 						if attachment_type == 'image':
 							contents.append({
 								"role": "user" if msg.author != discordClient.user else "assistant",
@@ -1052,7 +1174,7 @@ async def on_message(message):
 					contents.append({"role": "user" if msg.author != discordClient.user else "assistant", "content": msg.author.display_name + ": " + msg.content if msg.author != discordClient.user else msg.content})
 			await message.reply(openai_chat(contents), mention_author=False)	
 	for attachment in message.attachments:
-		attachment_type, attch_format = attachment.content_type.split('/')
+		attachment_type, _ = attachment.content_type.split('/')
 		if attachment_type == 'video':
 			if attachment.size > 52428800:
 				link_message = attachment.url + "Media is too large to embed - please jump to the original message"
@@ -1098,15 +1220,15 @@ async def on_reaction_add(reaction, user):
 		users = await reaction.users().flatten()
 		if discordClient.user in users:
 			await reaction.clear()
-			id = reaction.message.id
-			response = cursor.execute("SELECT guess, score FROM ai WHERE id = ?", (id,)).fetchall()
+			message_id = reaction.message.id
+			response = cursor.execute("SELECT guess, score FROM ai WHERE id = ?", (message_id,)).fetchall()
 			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
 	if reaction.emoji == "💡" and user != discordClient.user:
 		users = await reaction.users().flatten()
 		if discordClient.user in users:
 			await reaction.clear()
-			id = reaction.message.id
-			response = cursor.execute("SELECT guess, score FROM ai_text WHERE id = ?", (id,)).fetchall()
+			message_id = reaction.message.id
+			response = cursor.execute("SELECT guess, score FROM ai_text WHERE id = ?", (message_id,)).fetchall()
 			await reaction.message.reply(str(response) + "\nRequested by " + user.mention, mention_author=False)
 
 @discordClient.event

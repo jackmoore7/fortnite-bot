@@ -1,3 +1,6 @@
+import os
+import subprocess
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -6,10 +9,9 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from pyvirtualdisplay import Display
-import os
 from dotenv import load_dotenv
 from transmission_rpc import Client
-import subprocess
+
 load_dotenv()
 
 def test_port():
@@ -43,7 +45,7 @@ def test_port():
 
 def get_new_port():
     try:
-        vars = {}
+        variables = {}
         display = Display(visible=0, size=(800, 600))
         display.start()
         service = Service(executable_path='/usr/bin/chromedriver')
@@ -60,12 +62,12 @@ def get_new_port():
         driver.find_element(By.ID, "login_button").click()
         try:
             driver.find_element(By.XPATH, "//button[contains(.,\'Delete Port\')]").click()
-        except:
+        except Exception:
             pass
         driver.find_element(By.XPATH, "//button[contains(.,\'Request Matching Port\')]").click()
         WebDriverWait(driver, 5).until(expected_conditions.visibility_of_element_located((By.XPATH, "//div[@id=\'epf-port-info\']/span")))
-        vars["new_port"] = driver.find_element(By.XPATH, "//div[@id=\'epf-port-info\']/span").text
-        new_port = "{}".format(vars["new_port"])
+        variables["new_port"] = driver.find_element(By.XPATH, "//div[@id=\'epf-port-info\']/span").text
+        new_port = "{}".format(variables["new_port"])
         return int(new_port)
     except NoSuchElementException as e:
         print(f"Element not found: {e}.")

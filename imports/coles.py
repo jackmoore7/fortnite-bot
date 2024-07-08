@@ -1,15 +1,17 @@
 import requests
 import sqlite3 as sl
-from bs4 import BeautifulSoup
 import json
 import urllib.parse
+
+from bs4 import BeautifulSoup
 
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
+select_coles_version = "SELECT version FROM coles_version"
 
 def update_build_number():
-    build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
+    build_version = cursor.execute(select_coles_version).fetchone()[0]
     url = "https://www.coles.com.au/_next/data/"
     r = requests.get(url, headers=headers, verify=False)
     soup = BeautifulSoup(r.content, 'html.parser')
@@ -23,12 +25,12 @@ def update_build_number():
     
 def search_item(query):
     query = urllib.parse.quote(query)
-    build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
+    build_version = cursor.execute(select_coles_version).fetchone()[0]
     url = "https://www.coles.com.au/_next/data/"
     r = requests.get(url + build_version + "/en/search.json?q=" + query, headers=headers, verify=False)
     if r.status_code == 404:
         update_build_number()
-        build_version = cursor.execute("SELECT version FROM coles_version").fetchone()[0]
+        build_version = cursor.execute(select_coles_version).fetchone()[0]
         r = requests.get(url + build_version + "/en/search.json?q=" + query, headers=headers, verify=False)
         if r.status_code == 404:
             return "Your search returned a 404"
@@ -44,7 +46,7 @@ def get_items(id_list):
     r = requests.post(url, headers=headers, json=payload, verify=False)
     r = r.json()
     for item in r['results']:
-        id = item['id']
+        item_id = item['id']
         name = item['name']
         brand = item['brand']
         description = item['description']
@@ -68,7 +70,7 @@ def get_items(id_list):
             multibuy_unit_price = item['pricing']['multiBuyPromotion']['reward']
         else:
             multibuy_unit_price = ""
-        item_list.append([id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price, image_url, promotion_type])
+        item_list.append([item_id, name, brand, description, current_price, on_sale, available, offer_description, multibuy_unit_price, image_url, promotion_type])
     data = {
         "invalid_ids": r['invalidProducts'],
         "items": item_list

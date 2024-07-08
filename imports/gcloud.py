@@ -1,7 +1,8 @@
-from google.cloud import vision, language_v1, videointelligence
 import io
 import requests
 import os
+
+from google.cloud import vision, language_v1, videointelligence
 
 def classify_text(text):
     """
@@ -47,7 +48,7 @@ def classify_text(text):
         # is that this category represents the provided text.
         print("Confidence: {}".format(category.confidence))
 
-def CNL(text):
+def cnl(text):
     client = language_v1.LanguageServiceClient()
     document = language_v1.Document(
         content=text, type_=language_v1.Document.Type.PLAIN_TEXT

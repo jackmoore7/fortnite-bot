@@ -5,7 +5,9 @@ import uuid
 import os
 import requests
 import openai
+
 from openai import OpenAI
+
 from third_party_api import *
 
 client = OpenAI(
