@@ -26,16 +26,16 @@ from PIL import Image
 from bs4 import BeautifulSoup
 from systemd.journal import JournalHandler
 
-from gcloud import *
-from third_party_api import *
-from key_handling import *
-from epic_api import *
-from coles import *
-from uv import *
-from openai_api import *
-from lego_api import *
-from ephemeral_port import *
-from seveneleven_api import *
+from imports.gcloud import *
+from imports.third_party_api import *
+from imports.key_handling import *
+from imports.epic_api import *
+from imports.coles import *
+from imports.uv import *
+from imports.openai_api import *
+from imports.lego_api import *
+from imports.ephemeral_port import *
+from imports.seveneleven_api import *
 
 heartrate.trace(browser=True, host='0.0.0.0')
 

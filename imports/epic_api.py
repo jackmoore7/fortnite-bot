@@ -5,7 +5,7 @@ import sqlite3 as sl
 from time import sleep
 from datetime import datetime as dt
 
-from key_handling import *
+from imports.key_handling import *
 
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
