@@ -21,13 +21,20 @@ async def get_to_ten(ctx, number):
 			c = int(number[2])
 			d = int(number[3])
 			response = get_to_x(10, a, b, c, d)
-			response = format_train_solution(response)
-			if len(response) == 0:
+			num_of_solutions = len(response)
+			if num_of_solutions == 0:
 				await ctx.respond("There are no solutions for `" + str(number) + "`")
 			else:
 				embed = discord.Embed(title="Results for train game with number " + str(number))
-				title = "All " + str(len(response)) + " solutions"
-				embed.add_field(name=title, value=response)
+
+				response_start = "All " + str(num_of_solutions) + " solutions"
+				if num_of_solutions == 1:
+					response_start = "The only solution"
+				elif num_of_solutions == 2:
+					response_start = "Both solutions"
+				
+				formatted_response = format_train_solution(response)
+				embed.add_field(name=response_start, value=formatted_response)
 				await ctx.respond(response)
 	except Exception as e:
 		await ctx.respond(f"ruh roh {e}")
@@ -116,17 +123,56 @@ def get_to_x(x, a, b, c, d):
 		solution = ""
 		for character in success:
 			solution += character
-		solution = solution.replace("+0","").replace("-0", "").replace("0*0", "").replace("0+", "").replace("0-", "")
+		solution = solution.replace("+0","").replace("-0", "").replace("0*0", "").replace("0^0", "")
 		if solution[0] == "+":
 			solution = solution[1:]
 		solutions.add(solution)
 
 	return sorted(solutions)
 
+def place_brackets(expression):
+	return "((" + expression[0:3] + ")" + expression[3:5] + ")" + expression[5:]
+
+def solve(num1, op, num2):
+	result = 0
+	if op == "+":
+		result = float(num1) + float(num2)
+	elif op == "-":
+		result = float(num1) - float(num2)
+	elif op == "*":
+		result = float(num1) * float(num2)
+	elif op == "/":
+		result = float(num1) / float(num2)
+	elif op == "^":
+		result = pow(float(num1), float(num2))
+	
+	if result == int(result):
+		return int(result)
+	else:
+		return "{:.3f}".format(result) # 3 decimal points
+
+def breakdown_expression(sol0):
+	# ((0+9)+0)+1 -> (9+0)+1 -> 9+1 -> 10
+	if len(sol0) != 11:
+		print("Somehow got a solution the wrong length (" + str(len(sol0)) + "): " + sol0)
+		return sol0
+	
+	so_far = solve(sol0[2], sol0[3], sol0[4])
+	sol1 = "(" + str(so_far) + sol0[6:]
+
+	so_far = solve(so_far, sol0[6], sol0[7])
+	sol2 = str(so_far) + sol0[9:]
+
+	so_far = solve(so_far, sol0[9], sol0[10])
+	sol3 = str(so_far)
+
+	return sol0 + " -> " + sol1 + " -> " + sol2 + " -> " + sol3
+
 def format_train_solution(solutions):
-	if len(solutions) <= 1:
-		return solutions # nothing needed
-	response = str(solutions[0])
-	for solution in solutions:
-		response += "\n" + str(solution)
-	return response
+	formatted = []
+	for sol in solutions:
+		sol = place_brackets(sol)
+		sol = str(breakdown_expression(sol)) # only cast here so python knows its a string even though it always is
+		sol = sol.replace("*", "\*")
+		formatted.append(sol)
+	return formatted
