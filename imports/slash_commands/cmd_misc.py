@@ -127,7 +127,6 @@ def format_train_solution(solutions):
 	if len(solutions) <= 1:
 		return solutions # nothing needed
 	response = str(solutions[0])
-	while len(solutions) > 0:
-		solutions = solutions[1:]
-		response += "\n" + str(solutions[0])
+	for solution in solutions:
+		response += "\n" + str(solution)
 	return response

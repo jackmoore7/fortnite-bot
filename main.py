@@ -34,11 +34,6 @@ load_dotenv()
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.getenv('GOOGLE_KEY')
 
-
-
-
-
-
 @discord_client.event
 async def on_ready():
 	await bg_tasks.tasks_on_ready()
