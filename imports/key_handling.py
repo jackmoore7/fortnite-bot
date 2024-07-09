@@ -2,8 +2,7 @@ import requests
 import sqlite3 as sl
 import os
 
-con = sl.connect('fortnite.db', isolation_level=None)
-cursor = con.cursor()
+from imports.core_utils import cursor
 
 content_type = "application/x-www-form-urlencoded"
 url = "https://account-public-service-prod.ol.epicgames.com/account/api/oauth/token"

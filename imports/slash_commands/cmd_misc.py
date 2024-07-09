@@ -1,12 +1,11 @@
 import itertools
 import copy
+from imports.core_utils import discord, discord_client
 
-import main
 import imports.api.api_openai as api_openai
-import helpers
 
 async def ping(ctx):
-	await ctx.respond("Ponged your ping in " + str(round(main.discord_client.latency * 1000)) + "ms 😳")
+	await ctx.respond("Ponged your ping in " + str(round(discord_client.latency * 1000)) + "ms 😳")
 
 async def dalle3(ctx, prompt):
 	await ctx.defer()
@@ -21,12 +20,12 @@ async def get_to_ten(ctx, number):
 			b = int(number[1])
 			c = int(number[2])
 			d = int(number[3])
-			response = helpers.get_to_x(10, a, b, c, d)
-			response = helpers.format_train_solution(response)
+			response = get_to_x(10, a, b, c, d)
+			response = format_train_solution(response)
 			if len(response) == 0:
 				await ctx.respond("There are no solutions for `" + str(number) + "`")
 			else:
-				embed = main.discord.Embed(title="Results for train game with number " + str(number))
+				embed = discord.Embed(title="Results for train game with number " + str(number))
 				title = "All " + str(len(response)) + " solutions"
 				embed.add_field(name=title, value=response)
 				await ctx.respond(response)

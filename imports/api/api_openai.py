@@ -1,4 +1,3 @@
-import json
 import boto3
 import io
 import uuid
@@ -8,11 +7,11 @@ import openai
 
 from openai import OpenAI
 
-from imports.api.api_third_party import *
+from dotenv import load_dotenv
+load_dotenv() #even though we've already loaded dotenv in main, the app will refuse to run unless it's loaded here again. why? who knows :)
 
 client = OpenAI(
-  organization='org-p1aVCCHYJSv1GGzoauKukfql',
-  project='proj_7Y6EqNlguorsqDiEGOxBbagM',
+  api_key=os.getenv("OPENAI_API_KEY")
 )
 
 def upload_image_to_s3(image_data, bucket_name, object_key):

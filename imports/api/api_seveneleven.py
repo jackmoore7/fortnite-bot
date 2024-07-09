@@ -1,8 +1,4 @@
 import requests
-import sqlite3 as sl
-
-con = sl.connect('fortnite.db', isolation_level=None)
-cursor = con.cursor()
 
 def check_lowest_fuel_price():
     try:

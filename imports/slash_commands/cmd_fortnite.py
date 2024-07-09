@@ -1,11 +1,10 @@
 import os
 import asyncio
-import requests
 import shutil
-import discord
 import uuid
+import requests
+import discord
 
-import main
 import imports.api.api_epic as api_epic
 import imports.api.api_third_party as api_third_party
 
@@ -37,7 +36,7 @@ async def stats(ctx, username):
 	data = r.json()['data']
 	name = data['account']['name']
 	level = data['battlePass']['level']
-	embed = main.discord.Embed(title="All time statistics for " + name)
+	embed = discord.Embed(title="All time statistics for " + name)
 	stats = data['stats']['all']['overall']
 	fields = [
 		("Wins", "wins", lambda x: x),

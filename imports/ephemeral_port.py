@@ -9,10 +9,8 @@ from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from pyvirtualdisplay import Display
-from dotenv import load_dotenv
 from transmission_rpc import Client
 
-load_dotenv()
 
 def test_port():
     try:

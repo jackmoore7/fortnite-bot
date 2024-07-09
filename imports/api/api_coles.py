@@ -1,12 +1,10 @@
-import requests
-import sqlite3 as sl
 import json
 import urllib.parse
+import requests
 
 from bs4 import BeautifulSoup
+from imports.core_utils import cursor
 
-con = sl.connect('fortnite.db', isolation_level=None)
-cursor = con.cursor()
 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
 select_coles_version = "SELECT version FROM coles_version"
 

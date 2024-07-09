@@ -14,14 +14,14 @@ from discord.ext import tasks
 from PIL import Image
 from bs4 import BeautifulSoup
 
-import main
-import helpers
+from imports.core_utils import discord_client, cursor, tasks_list
+import imports.helpers as helpers
 import imports.api.api_third_party as api_third_party
 import imports.api.api_epic as api_epic
 import imports.api.api_coles as api_coles
 import imports.api.api_lego as api_lego
-import uv
-import ephemeral_port
+import imports.uv as uv
+import imports.ephemeral_port as ephemeral_port
 import imports.api.api_seveneleven as api_seveneleven
 
 start_time = time(20, 1, 0)
@@ -29,7 +29,7 @@ end_time = time(7, 0, 0)
 time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minute in range(0, 60, 1)] + [time(hour, minute) for hour in range(end_time.hour + 1) for minute in range(0, 60, 1)]
 
 async def tasks_on_ready():
-	await main.discord_client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="me booty arrrr"))
+	await discord_client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="me booty arrrr"))
 	if not fortnite_update_bg.is_running():
 		fortnite_update_bg.start()
 	if not tv_show_update_bg.is_running():
@@ -54,26 +54,26 @@ async def tasks_on_ready():
 		fuel_check.start()
 	if not fortnite_shop_update_v3.is_running():
 		fortnite_shop_update_v3.start()
-	main.tasks_list["update"] = fortnite_update_bg
-	main.tasks_list["tv"] = tv_show_update_bg
-	main.tasks_list["status"] = fortnite_status_bg
-	main.tasks_list["coles"] = coles_specials_bg
-	main.tasks_list["arpansa"] = arpansa
-	main.tasks_list['free_games'] = epic_free_games
-	main.tasks_list['ozb_bangers'] = ozb_bangers
-	main.tasks_list['lego'] = lego_bg
-	main.tasks_list['transmission'] = transmission_port_forwarding
-	main.tasks_list['shop'] = fortnite_shop_update_v3
-	print(f"{main.discord_client.user} is online! My PID is {os.getpid()}.")
+	tasks_list["update"] = fortnite_update_bg
+	tasks_list["tv"] = tv_show_update_bg
+	tasks_list["status"] = fortnite_status_bg
+	tasks_list["coles"] = coles_specials_bg
+	tasks_list["arpansa"] = arpansa
+	tasks_list['free_games'] = epic_free_games
+	tasks_list['ozb_bangers'] = ozb_bangers
+	tasks_list['lego'] = lego_bg
+	tasks_list['transmission'] = transmission_port_forwarding
+	tasks_list['shop'] = fortnite_shop_update_v3
+	print(f"{discord_client.user} is online! My PID is {os.getpid()}.")
 
 @tasks.loop(minutes=5)
 async def fortnite_update_bg():
 	try:
-		channel = main.discord_client.get_channel(int(os.getenv('UPD8_CHANNEL')))
+		channel = discord_client.get_channel(int(os.getenv('UPD8_CHANNEL')))
 		response = api_epic.get_fortnite_update_manifest()
-		current_version = main.cursor.execute("SELECT version FROM aes").fetchone()[0]
+		current_version = cursor.execute("SELECT version FROM aes").fetchone()[0]
 		if current_version != response:
-			main.cursor.execute("UPDATE aes SET version = ?", (response,))
+			cursor.execute("UPDATE aes SET version = ?", (response,))
 			embed = discord.Embed(title="A new Fortnite update was just deployed")
 			embed.add_field(name="Build", value=response, inline=False)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
@@ -85,11 +85,11 @@ async def fortnite_update_bg():
 @tasks.loop(minutes=5)
 async def fortnite_status_bg():
 	try:
-		channel = main.discord_client.get_channel(int(os.getenv('UPD8_CHANNEL')))
+		channel = discord_client.get_channel(int(os.getenv('UPD8_CHANNEL')))
 		response = api_epic.get_fortnite_status()
-		current_status = main.cursor.execute("SELECT * FROM server").fetchall()[0][0]
+		current_status = cursor.execute("SELECT * FROM server").fetchall()[0][0]
 		if current_status != response:
-			main.cursor.execute("UPDATE server SET status = ?", (response,))
+			cursor.execute("UPDATE server SET status = ?", (response,))
 			embed = discord.Embed(title = "Fortnite server status update")
 			embed.add_field(name="Status", value=response)
 			await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
@@ -127,13 +127,13 @@ async def fortnite_shop_update_v3():
 		else:
 			no_images.append(name)
 
-	channel = main.discord_client.get_channel(int(os.getenv('SHOP2_CHANNEL')))
+	channel = discord_client.get_channel(int(os.getenv('SHOP2_CHANNEL')))
 	r = api_third_party.fortnite_shop_v3()
-	date = main.cursor.execute("SELECT date FROM shop_v3").fetchone()[0]
+	date = cursor.execute("SELECT date FROM shop_v3").fetchone()[0]
 	new_date = r['data']['date']
 	if new_date != date:
-		vbucks_emoji = main.discord_client.get_emoji(int(os.getenv('VBUCKS_EMOJI')))
-		ping_list = main.cursor.execute("SELECT item, id FROM shop_ping").fetchall()
+		vbucks_emoji = discord_client.get_emoji(int(os.getenv('VBUCKS_EMOJI')))
+		ping_list = cursor.execute("SELECT item, id FROM shop_ping").fetchall()
 		no_images = []
 		daily = []
 		for item in r['data']['daily']:
@@ -167,7 +167,7 @@ async def fortnite_shop_update_v3():
 					featured.append((item['images']['icon'], item['name'], sorted(item['history']['dates'])[-2], item['price']))
 				else:
 					no_images.append((item['name'], sorted(item['history']['dates'])[-2], item['price']))
-		yesterday = main.cursor.execute("SELECT * FROM shop_v3_content").fetchall()
+		yesterday = cursor.execute("SELECT * FROM shop_v3_content").fetchall()
 		diff = [item for item in featured if item[1] not in (item[1] for item in yesterday)]
 		if len(diff) < 1:
 			diff2 = [item for item in yesterday if item[1] not in (item[1] for item in featured)]
@@ -175,7 +175,7 @@ async def fortnite_shop_update_v3():
 				await channel.send("The following items were just deleted from the shop:")
 				for item in diff2:
 					await channel.send(f"{item[1]}")
-			main.cursor.execute("UPDATE shop_v3 SET date = ?", (new_date,))
+			cursor.execute("UPDATE shop_v3 SET date = ?", (new_date,))
 			return
 		print(f"daily: {len(daily)}")
 		print(f"featured: {len(featured)}")
@@ -207,17 +207,17 @@ async def fortnite_shop_update_v3():
 			await channel.send("The following items did not have associated images or failed to download after multiple attempts:")
 			for item in no_images:
 				await channel.send(item)
-		main.cursor.execute("DELETE FROM shop_v3_content")
-		main.cursor.executemany("INSERT INTO shop_v3_content VALUES (?, ?)", [(item[0], item[1]) for item in featured])
-		main.cursor.execute("UPDATE shop_v3 SET date = ?", (date,))
+		cursor.execute("DELETE FROM shop_v3_content")
+		cursor.executemany("INSERT INTO shop_v3_content VALUES (?, ?)", [(item[0], item[1]) for item in featured])
+		cursor.execute("UPDATE shop_v3 SET date = ?", (date,))
 
 @tasks.loop(minutes=180)
 async def coles_specials_bg():
 	try:
-		channel = main.discord_client.get_channel(int(os.getenv('COLES_SPECIALS_CHANNEL')))
+		channel = discord_client.get_channel(int(os.getenv('COLES_SPECIALS_CHANNEL')))
 		product_url = "https://www.coles.com.au/product/"
-		items = main.cursor.execute("SELECT * FROM coles_specials").fetchall()
-		item_ids = main.cursor.execute("SELECT id FROM coles_specials").fetchall()
+		items = cursor.execute("SELECT * FROM coles_specials").fetchall()
+		item_ids = cursor.execute("SELECT id FROM coles_specials").fetchall()
 		item_ids_list = []
 		for id in item_ids:
 			item_ids_list.append(id[0])
@@ -231,7 +231,7 @@ async def coles_specials_bg():
 			items_new.append(item)
 		if items != items_new:
 			for item in items_new:
-				main.cursor.execute("UPDATE coles_specials SET available = ?, on_sale = ?, current_price = ? WHERE id = ?", (item[6], item[5], item[4], item[0]))
+				cursor.execute("UPDATE coles_specials SET available = ?, on_sale = ?, current_price = ? WHERE id = ?", (item[6], item[5], item[4], item[0]))
 		for item1, item2 in zip(items, items_new):
 			differences_exist = any(old_value != new_value for old_value, new_value in zip(item1[4:], item2[4:]))
 			if differences_exist:
@@ -258,9 +258,9 @@ async def coles_specials_bg():
 @tasks.loop(minutes=30)
 async def lego_bg():
 	# try:
-		channel = main.discord_client.get_channel(int(os.getenv('LEGO_CHANNEL')))
+		channel = discord_client.get_channel(int(os.getenv('LEGO_CHANNEL')))
 		product_url = 'https://www.lego.com/en-au/product/'
-		items_old = main.cursor.execute("SELECT * FROM lego").fetchall()
+		items_old = cursor.execute("SELECT * FROM lego").fetchall()
 		items_new = []
 		for item in items_old:
 			result = api_lego.get_lego_item_by_id(item[0])
@@ -277,7 +277,7 @@ async def lego_bg():
 
 		if items_old != items_new:
 			for item in items_new:
-				main.cursor.execute("UPDATE lego SET name = ?, image_url = ?, slug = ?, availability = ?, on_sale = ?, price = ? WHERE id = ?", (item[1], item[2], item[3], item[4], item[5], item[6], item[0]))
+				cursor.execute("UPDATE lego SET name = ?, image_url = ?, slug = ?, availability = ?, on_sale = ?, price = ? WHERE id = ?", (item[1], item[2], item[3], item[4], item[5], item[6], item[0]))
 
 		for item1, item2 in zip(items_old, items_new):
 			differences_exist = any(old_value != new_value for old_value, new_value in zip(item1[3:], item2[3:]))
@@ -300,12 +300,12 @@ async def lego_bg():
 @tasks.loop(minutes=60)
 async def epic_free_games():
 	
-	ch = main.discord_client.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
+	ch = discord_client.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
 
 	def timestampify_and_convert_to_aest(string):
 		utc_timezone = pytz.timezone('UTC')
-		our_timezone = main.timezone
-		date_time_obj = dt.strptime(string, main.time_format)
+		our_timezone = helpers.timezone
+		date_time_obj = dt.strptime(string, helpers.time_format)
 		date_time_obj = utc_timezone.localize(date_time_obj)
 		our_time = date_time_obj.astimezone(our_timezone)
 		struct_time = our_time.timetuple()
@@ -313,8 +313,8 @@ async def epic_free_games():
 		return timestamp
 
 	def test_time(string):
-		our_timezone = main.timezone
-		end_dt = dt.strptime(string, main.time_format)
+		our_timezone = helpers.timezone
+		end_dt = dt.strptime(string, helpers.time_format)
 		end_dt = our_timezone.localize(end_dt)
 		current_dt = dt.now(our_timezone)
 		if current_dt > end_dt:
@@ -324,15 +324,15 @@ async def epic_free_games():
 		
 	def convert_to_aest(string):
 		utc_timezone = pytz.timezone('UTC')
-		our_timezone = main.timezone
-		date_time_obj = dt.strptime(string, main.time_format)
+		our_timezone = helpers.timezone
+		date_time_obj = dt.strptime(string, helpers.time_format)
 		date_time_obj = utc_timezone.localize(date_time_obj)
 		our_time = date_time_obj.astimezone(our_timezone)
-		new_string = our_time.strftime(main.time_format)
+		new_string = our_time.strftime(helpers.time_format)
 		return new_string
 
 	games_list = api_epic.get_free_games()
-	posted = main.cursor.execute("SELECT * FROM free_games").fetchall()
+	posted = cursor.execute("SELECT * FROM free_games").fetchall()
 
 	diff = [game for game in games_list if game[0] not in [posted_game[0] for posted_game in posted]]
 
@@ -346,17 +346,17 @@ async def epic_free_games():
 			embed.add_field(name="Starts", value=timestampify_and_convert_to_aest(game[3]))
 			embed.add_field(name="Ends", value=timestampify_and_convert_to_aest(game[4]))
 			await ch.send(f"<@&{os.getenv('FREE_GAMES_ROLE')}>", embed=embed)
-			main.cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], convert_to_aest(game[4])))
+			cursor.execute("INSERT INTO free_games VALUES (?, ?, ?, ?)", (game[0], game[1], game[2], convert_to_aest(game[4])))
 	
 	for game in posted:
 		if test_time(game[3]):
-			main.cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
+			cursor.execute("DELETE FROM free_games WHERE title = ?", (game[0],))
 			print(f"{game[0]} was deleted from the free_games database as the promotional period has ended.")
 
 @tasks.loop(minutes=60)
 async def gog_free_games():
-	ch = main.discord_client.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
-	posted = main.cursor.execute("SELECT * FROM gog_free_games").fetchall()
+	ch = discord_client.get_channel(int(os.getenv('FREE_GAMES_CHANNEL')))
+	posted = cursor.execute("SELECT * FROM gog_free_games").fetchall()
 	r = requests.get("https://www.gog.com/")
 	soup = BeautifulSoup(r.content, 'html.parser')
 	giveaway = soup.find('a', {'id': 'giveaway'})
@@ -374,17 +374,17 @@ async def gog_free_games():
 			embed.description = url
 			embed.add_field(name="Ends", value=timestamp)
 			await ch.send(f"<@&{os.getenv('FREE_GAMES_ROLE')}>", embed=embed)
-			main.cursor.execute("INSERT INTO gog_free_games VALUES (?)", (url,))
+			cursor.execute("INSERT INTO gog_free_games VALUES (?)", (url,))
 	else:
-		main.cursor.execute("DELETE FROM gog_free_games")
+		cursor.execute("DELETE FROM gog_free_games")
 
 @tasks.loop(minutes=30)
 async def tv_show_update_bg():
 	try:
-		user = main.discord_client.get_user(int(os.getenv('ME')))
+		user = discord_client.get_user(int(os.getenv('ME')))
 		url = os.getenv('SHOWRSS')
 		feed = feedparser.parse(url)
-		last_guid = main.cursor.execute("select * from rss").fetchall()[0][0]
+		last_guid = cursor.execute("select * from rss").fetchall()[0][0]
 		if len(feed['entries']) > 0:
 			latest_guid = feed['entries'][0]['guid']
 		else:
@@ -393,7 +393,7 @@ async def tv_show_update_bg():
 			rssembed = discord.Embed(title = "A new episode just released!")
 			rssembed.add_field(name="Name", value=feed['entries'][0]['tv_raw_title'], inline=False)
 			rssembed.add_field(name="Released", value=feed['entries'][0]['published'], inline=False)
-			main.cursor.execute("UPDATE rss SET guid = ?", (latest_guid,))
+			cursor.execute("UPDATE rss SET guid = ?", (latest_guid,))
 			await user.send(embed = rssembed)
 	except Exception as e:
 		print("Something went wrong getting the TV show RSS: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
@@ -403,11 +403,11 @@ async def tv_show_update_bg():
 @tasks.loop(time=time_list)
 async def arpansa():
 	try:
-		ch = main.discord_client.get_channel(int(os.getenv('UV_CHANNEL')))
+		ch = discord_client.get_channel(int(os.getenv('UV_CHANNEL')))
 		role = os.getenv('SUNSCREEN_ROLE')
-		current_date = dt.now(main.timezone).strftime('%Y-%m-%d')
-		current_time = (dt.now(main.timezone)-timedelta(minutes=1)).strftime('%H:%M')
-		db_date = main.cursor.execute("SELECT start FROM uv_times").fetchone()[0]
+		current_date = dt.now(helpers.timezone).strftime('%Y-%m-%d')
+		current_time = (dt.now(helpers.timezone)-timedelta(minutes=1)).strftime('%H:%M')
+		db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
 		data = uv.get_arpansa_data()
 		current_uv = float(data['CurrentUVIndex'])
 		max_uv_today_recorded = float(data['MaximumUVLevel'])
@@ -425,18 +425,18 @@ async def arpansa():
 				embed.title = "Sun protection required today"
 				# await ch.send(f"<@&{role}>")
 				embed.add_field(name="Time", value=f"{first_forecast_gte_3_item['Date'][-5:]} - {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
-				main.cursor.execute("UPDATE uv_times SET safe = 0")
+				cursor.execute("UPDATE uv_times SET safe = 0")
 			else:
 				embed.title = "No sun protection required today"
-				main.cursor.execute("UPDATE uv_times SET safe = 1")
+				cursor.execute("UPDATE uv_times SET safe = 1")
 			embed.add_field(name="Maximum UV (Forecast)", value=f"{uv.calculate_emoji(max_uv_today_forecast)} {max_uv_today_forecast} at {max_uv_today_forecast_time}", inline=False)
 			embed.add_field(name="Maximum UV (Recorded)", value=f"{uv.calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
 			embed.add_field(name="Current UV", value=f"{uv.calculate_emoji(current_uv)} {current_uv} at {current_time}", inline=False)
 			msg = await ch.send(embed=embed)
-			main.cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
-			main.cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
+			cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
+			cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
 
-		msg = await ch.fetch_message(int(main.cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
+		msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
 		emb = msg.embeds[0]
 		emb.set_field_at(-1, name="Current UV", value=f"{uv.calculate_emoji(current_uv)} {current_uv} at {current_time}")
 		emb.set_field_at(-2, name="Maximum UV (Recorded)", value=f"{uv.calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
@@ -445,10 +445,10 @@ async def arpansa():
 
 		await ch.edit(name=f"{uv.calculate_emoji(current_uv)} uv")
 
-		safe = bool(main.cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
+		safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
 		if safe and current_uv >= 3:
 			await ch.send(f"<@&{role}> Earlier forecast was incorrect - UV index is now above safe levels. slip slop slap bitch")
-			main.cursor.execute("UPDATE uv_times SET safe = 0")
+			cursor.execute("UPDATE uv_times SET safe = 0")
 	except Exception as e:
 		print(f"ARPANSA task encountered an exception: {e}")
 		await asyncio.sleep(60)
@@ -458,7 +458,7 @@ async def arpansa():
 async def ozb_bangers():
 	try:
 		feed = feedparser.parse("https://www.ozbargain.com.au/deals/feed")
-		posted = main.cursor.execute("SELECT * FROM ozbargain").fetchall()
+		posted = cursor.execute("SELECT * FROM ozbargain").fetchall()
 		for post in feed['entries']:
 			upvotes = int(post['ozb_meta']['votes-pos'])
 			downvotes = int(post['ozb_meta']['votes-neg'])
@@ -473,9 +473,9 @@ async def ozb_bangers():
 					expiry = "Unknown"
 				title = post['title']
 				link = post['link']
-				upvote_emoji = main.discord_client.get_emoji(int(os.getenv('UPVOTE_EMOJI')))
-				downvote_emoji = main.discord_client.get_emoji(int(os.getenv('DOWNVOTE_EMOJI')))
-				ch = main.discord_client.get_channel(int(os.getenv('OZB_BANGERS_CHANNEL')))
+				upvote_emoji = discord_client.get_emoji(int(os.getenv('UPVOTE_EMOJI')))
+				downvote_emoji = discord_client.get_emoji(int(os.getenv('DOWNVOTE_EMOJI')))
+				ch = discord_client.get_channel(int(os.getenv('OZB_BANGERS_CHANNEL')))
 				embed = discord.Embed()
 				embed.title = f"{prefix} {title}"
 				embed.description = f"{upvote_emoji} {upvotes}\n{downvote_emoji} {downvotes}"
@@ -483,7 +483,7 @@ async def ozb_bangers():
 				embed.add_field(name="Link", value=link, inline=False)
 				embed.add_field(name="Expires", value=expiry, inline=False)
 				await ch.send(embed=embed)
-				main.cursor.execute("INSERT INTO ozbargain VALUES (?)", (link,))
+				cursor.execute("INSERT INTO ozbargain VALUES (?)", (link,))
 	except Exception as e:
 		print(f"ozb_bangers encountered an exception: {e}")
 		await asyncio.sleep(60)
@@ -492,7 +492,7 @@ async def ozb_bangers():
 @tasks.loop(minutes=5)
 async def transmission_port_forwarding():
 	try:
-		channel = main.discord_client.get_channel(int(os.getenv('TRANSMISSION_CHANNEL')))
+		channel = discord_client.get_channel(int(os.getenv('TRANSMISSION_CHANNEL')))
 		response = ephemeral_port.test_port()
 		if response:
 			await channel.send(response)
@@ -501,14 +501,14 @@ async def transmission_port_forwarding():
 
 @tasks.loop(minutes=5)
 async def fuel_check():
-	channel = main.discord_client.get_channel(int(os.getenv('FUEL_CHANNEL')))
+	channel = discord_client.get_channel(int(os.getenv('FUEL_CHANNEL')))
 	try:
 		response = api_seveneleven.check_lowest_fuel_price_p03()
 		# last_updated = response[1]
 		response = response[0]
-		db_price = main.cursor.execute("SELECT * FROM fuel").fetchone()[0]
+		db_price = cursor.execute("SELECT * FROM fuel").fetchone()[0]
 		if db_price != str(response['price']):
-			main.cursor.execute("UPDATE fuel SET price = ?", (str(response['price']),))
+			cursor.execute("UPDATE fuel SET price = ?", (str(response['price']),))
 			await channel.send(f"The cheapest fuel is {response['type']} at {response['suburb']} for {response['price']}.")
 	except Exception as e:
 		# await channel.send(f"Uh oh {e}")

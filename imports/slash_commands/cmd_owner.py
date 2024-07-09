@@ -1,14 +1,16 @@
 import os
 import signal
-
-import main
+from imports.core_utils import cursor, discord_client, tasks_list
+from imports.helpers import nice_try
 import imports.api.api_epic as api_epic
-from commands import is_owner
+
+def is_owner(ctx):
+	return ctx.user.id == int(os.getenv('ME'))
 
 async def edit_message(ctx, id, content):
 	try:
 		if not is_owner(ctx):
-			await ctx.respond(main.nice_try)
+			await ctx.respond(nice_try)
 		else:
 			channel = ctx.channel
 			msg = await channel.fetch_message(id)
@@ -20,10 +22,10 @@ async def edit_message(ctx, id, content):
 
 async def stop_task(ctx, task_name):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 	else:
 		try:
-			task = main.tasks_list.get(task_name)
+			task = tasks_list.get(task_name)
 			if task:
 				task.cancel()
 				await ctx.respond(f"{task} stopped ✅")
@@ -34,21 +36,21 @@ async def stop_task(ctx, task_name):
 
 async def add_friend(ctx, user_id):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 	else:
 		e = api_epic.add_friend(user_id)
 		await ctx.respond(e)
 
 async def list_friends(ctx, include_pending):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 	else:
 		e = api_epic.get_all_friends(include_pending)
 		await ctx.respond(e)
 
 async def purge(ctx, amount):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 		return
 	await ctx.defer()
 	await ctx.channel.purge(limit=int(amount)+1, bulk=True)
@@ -56,10 +58,10 @@ async def purge(ctx, amount):
 async def sql_fetchall(ctx, query):
 	print(ctx.user.id)
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 	else:
 		try:
-			q = main.cursor.execute(query).fetchall()
+			q = cursor.execute(query).fetchall()
 			await ctx.respond(q)
 		except Exception as e:
 			await ctx.respond("Not a valid query. Reason: " + str(repr(e)))
@@ -67,17 +69,17 @@ async def sql_fetchall(ctx, query):
 async def sql(ctx, query):
 	print(ctx.user.id)
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 	else:
 		try:
-			main.cursor.execute(query)
+			cursor.execute(query)
 			await ctx.respond("Executed ✅")
 		except Exception as e:
 			await ctx.respond("Not a valid query. Reason: " + str(repr(e)))
 
 async def delete_message_by_id(ctx, id):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 		return
 	try:
 		channel = ctx.channel
@@ -89,8 +91,8 @@ async def delete_message_by_id(ctx, id):
 
 async def die(ctx):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 		return
 	await ctx.respond("Death request received 🫡")
 	os.kill(int(os.getpid()), signal.SIGKILL)
-	await main.discord_client.close()
+	await discord_client.close()

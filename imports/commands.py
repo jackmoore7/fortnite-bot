@@ -4,12 +4,13 @@ import discord
 
 from discord.ext.pages import Paginator, Page
 
-import main
+from imports.helpers import nice_try, removed, added
+from imports.core_utils import cursor
 import imports.api.api_coles as api_coles
 import imports.api.api_lego as api_lego
 
 def is_owner(ctx):
-	return ctx.user.id != int(os.getenv('ME'))
+	return ctx.user.id == int(os.getenv('ME'))
 
 '''
 	Owner only commands
@@ -17,7 +18,7 @@ def is_owner(ctx):
 
 async def coles_edit(ctx, item_id):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 	else:
 		await ctx.defer()
 		result = api_coles.get_items([item_id])
@@ -42,11 +43,11 @@ async def coles_edit(ctx, item_id):
 
 async def coles_list(ctx):
 	if not is_owner(ctx):
-		await ctx.respond(main.nice_try)
+		await ctx.respond(nice_try)
 	else:
 		try:
 			tracked = api_coles.cursor.execute("SELECT * FROM coles_specials")
-			embed = main.discord.Embed(title = "Items you're tracking")
+			embed = discord.Embed(title = "Items you're tracking")
 			for item in tracked:
 				item_id = item[0]
 				name = item[1]
@@ -77,7 +78,7 @@ async def coles_search(ctx, string):
 		results_list = [(product['id'], product['name'], product['brand'], product['imageUris'][0]['uri']) for product in results if ('adId' not in product or not product['adId']) and 'id' in product]
 		pages = []
 		for item in results_list:
-			embed = main.discord.Embed(title = f"{item[2]} {item[1]}")
+			embed = discord.Embed(title = f"{item[2]} {item[1]}")
 			embed.set_image(url=url + item[3])
 			embed.add_field(name="ID", value=item[0])
 			embed.set_footer(text=f"Returned {num_results} results")
@@ -100,15 +101,15 @@ async def notifyme_edit(ctx, item):
 		await ctx.respond("Not a valid string. [a-z0-9\s\-'] only.")
 		return
 	user_id = ctx.user.id
-	if len(main.cursor.execute("SELECT * FROM shop_ping WHERE item = ? AND id = ?", (item, user_id)).fetchall()) > 0:
-		main.cursor.execute("DELETE FROM shop_ping WHERE item = ? AND id = ?", (item, user_id))
-		await ctx.respond(main.removed)
+	if len(cursor.execute("SELECT * FROM shop_ping WHERE item = ? AND id = ?", (item, user_id)).fetchall()) > 0:
+		cursor.execute("DELETE FROM shop_ping WHERE item = ? AND id = ?", (item, user_id))
+		await ctx.respond(removed)
 		return
-	main.cursor.execute("INSERT INTO shop_ping VALUES (?, ?)", (user_id, item))
-	await ctx.respond(main.added)
+	cursor.execute("INSERT INTO shop_ping VALUES (?, ?)", (user_id, item))
+	await ctx.respond(added)
 
 async def notifyme_list(ctx):
-	items = main.cursor.execute("SELECT item FROM shop_ping WHERE id = ?", (ctx.user.id,)).fetchall()
+	items = cursor.execute("SELECT item FROM shop_ping WHERE id = ?", (ctx.user.id,)).fetchall()
 	items = [item[0] for item in items]
 	await ctx.respond(items)
 
@@ -146,18 +147,18 @@ async def lego_edit(ctx, id):
 		availability = result['variant']['attributes']['availabilityText']
 		on_sale = result['variant']['attributes']['onSale']
 		price = result['variant']['price']['formattedAmount']
-		result_db = main.cursor.execute("SELECT * FROM lego WHERE id = ?", (id,)).fetchone()
+		result_db = cursor.execute("SELECT * FROM lego WHERE id = ?", (id,)).fetchone()
 		if result_db:
-			main.cursor.execute("DELETE FROM lego WHERE id = ?", (id,)).fetchone()
+			cursor.execute("DELETE FROM lego WHERE id = ?", (id,)).fetchone()
 			await ctx.respond(f"Removed {name} from your list")
 		else:
-			main.cursor.execute("INSERT INTO lego VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, image_url, slug, availability, on_sale, price))
+			cursor.execute("INSERT INTO lego VALUES (?, ?, ?, ?, ?, ?, ?)", (id, name, image_url, slug, availability, on_sale, price))
 			await ctx.respond(f"Added {name} to your list")
 	else:
 		await ctx.respond(f"{id} didn't return any results :(")
 
 async def lego_list(ctx):
-	tracked = main.cursor.execute("SELECT * FROM lego")
+	tracked = cursor.execute("SELECT * FROM lego")
 	embed = discord.Embed(title = "Items you're tracking")
 	for item in tracked:
 		item_id = item[0]

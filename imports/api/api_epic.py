@@ -1,14 +1,11 @@
 import os
 import requests
-import sqlite3 as sl
 
 from time import sleep
-from datetime import datetime as dt
 
 from imports.key_handling import *
 
-con = sl.connect('fortnite.db', isolation_level=None)
-cursor = con.cursor()
+from imports.core_utils import cursor
 
 content_type = "application/x-www-form-urlencoded"
 select_switch = "SELECT switch FROM keys"
