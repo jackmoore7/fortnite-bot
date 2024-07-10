@@ -1,6 +1,7 @@
 import itertools
 import copy
 from imports.core_utils import discord, discord_client
+from discord.ext.pages import Paginator, Page
 
 import imports.api.api_openai as api_openai
 
@@ -25,17 +26,19 @@ async def get_to_ten(ctx, number):
 			if num_of_solutions == 0:
 				await ctx.respond("There are no solutions for `" + str(number) + "`")
 			else:
-				embed = discord.Embed(title="Results for train game with number " + str(number))
-
+				pages = []
 				response_start = "All " + str(num_of_solutions) + " solutions"
 				if num_of_solutions == 1:
 					response_start = "The only solution"
 				elif num_of_solutions == 2:
 					response_start = "Both solutions"
-				
-				formatted_response = format_train_solution(response)
-				embed.add_field(name=response_start, value=formatted_response)
-				await ctx.respond(response)
+				formatted = check_list_length(response)
+				for result_list in formatted:
+					embed = discord.Embed(title="Results for train game with number " + str(number))
+					embed.add_field(name=response_start, value='\n'.join(result_list))
+					pages.append(Page(embeds=[embed]))
+				paginator = Paginator(pages=pages)
+				await paginator.respond(ctx.interaction)
 	except Exception as e:
 		await ctx.respond(f"ruh roh {e}")
 
@@ -169,10 +172,24 @@ def breakdown_expression(sol0):
 	return sol0 + " -> " + sol1 + " -> " + sol2 + " -> " + sol3
 
 def format_train_solution(solutions):
-	formatted = []
-	for sol in solutions:
-		sol = place_brackets(sol)
-		sol = str(breakdown_expression(sol)) # only cast here so python knows its a string even though it always is
-		sol = sol.replace("*", "\*")
-		formatted.append(sol)
-	return formatted
+    formatted = []
+    for sol in solutions:
+        sol = place_brackets(sol)
+        sol = str(breakdown_expression(sol))  # only cast here so python knows its a string even though it always is
+        sol = sol.replace("*", "\*")
+        formatted.append(sol)
+    return formatted
+
+def check_list_length(solutions):
+    formatted_list = format_train_solution(solutions)
+    total_length = sum(len(solution) for solution in formatted_list)
+    
+    if total_length > 1024:
+        num_items = len(formatted_list)
+        third = num_items // 3
+        first_third = formatted_list[:third]
+        second_third = formatted_list[third:2*third]
+        third_third = formatted_list[2*third:]
+        return [first_third, second_third, third_third]
+    else:
+        return [formatted_list]
