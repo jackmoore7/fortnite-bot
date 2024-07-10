@@ -151,7 +151,7 @@ def solve(num1, op, num2):
 	if result == int(result):
 		return int(result)
 	else:
-		return "{:.3f}".format(result) # 3 decimal points
+		return float("{:.3f}".format(result))
 
 def breakdown_expression(sol0):
 	# ((0+9)+0)+1 -> (9+0)+1 -> 9+1 -> 10
@@ -182,15 +182,12 @@ def format_train_solution(solutions):
 def check_list_length(solutions):
 	formatted_list = format_train_solution(solutions)
 	total_length = sum(len(solution) for solution in formatted_list)
-
 	if total_length > 1000:
 		current_length = 0
 		current_list = []
 		result_lists = []
-
 		for solution in formatted_list:
 			solution_length = len(solution)
-            
 			if current_length + solution_length <= 1000:
 				current_list.append(solution)
 				current_length += solution_length
@@ -198,7 +195,6 @@ def check_list_length(solutions):
 				result_lists.append(current_list)
 				current_list = [solution]
 				current_length = solution_length
-
 		if current_list:
 			result_lists.append(current_list)
 		return result_lists
