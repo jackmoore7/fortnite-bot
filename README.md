@@ -35,10 +35,10 @@ Very hacky but it works :)
 ![NVIDIA_Share_gy3j9SL3QM](https://github.com/jackmoore7/fortnite-bot/assets/53585628/09e97b68-c0df-4e8b-b0f9-948a6da5e36a)
 
 Posts the UV forecast and protection window in the morning, and updates every minute throughout the day. Includes a ping if the forecast was incorrect.
-Uses data from [ARPANSA](https://www.arpansa.gov.au/)
+Uses data from [ARPANSA](https://www.arpansa.gov.au/).
 
 ## Coles
-![alt text](image.png)
+![image](https://github.com/jackmoore7/fortnite-bot/assets/53585628/9094d1fa-df53-4092-9790-ff84c72478b1)
 
 This is also its own repo, but this one will almost certainly be more up to date. The plan is to make this a web app one day.
 
