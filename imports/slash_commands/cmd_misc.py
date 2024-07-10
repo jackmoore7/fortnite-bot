@@ -180,15 +180,27 @@ def format_train_solution(solutions):
     return formatted
 
 def check_list_length(solutions):
-    formatted_list = format_train_solution(solutions)
-    total_length = sum(len(solution) for solution in formatted_list)
-    
-    if total_length > 1024:
-        num_items = len(formatted_list)
-        third = num_items // 3
-        first_third = formatted_list[:third]
-        second_third = formatted_list[third:2*third]
-        third_third = formatted_list[2*third:]
-        return [first_third, second_third, third_third]
-    else:
-        return [formatted_list]
+	formatted_list = format_train_solution(solutions)
+	total_length = sum(len(solution) for solution in formatted_list)
+
+	if total_length > 1000:
+		current_length = 0
+		current_list = []
+		result_lists = []
+
+		for solution in formatted_list:
+			solution_length = len(solution)
+            
+			if current_length + solution_length <= 1000:
+				current_list.append(solution)
+				current_length += solution_length
+			else:
+				result_lists.append(current_list)
+				current_list = [solution]
+				current_length = solution_length
+
+		if current_list:
+			result_lists.append(current_list)
+		return result_lists
+	else:
+		return [formatted_list]
