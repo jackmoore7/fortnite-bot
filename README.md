@@ -38,6 +38,8 @@ Posts the UV forecast and protection window in the morning, and updates every mi
 Uses data from [ARPANSA](https://www.arpansa.gov.au/)
 
 ## Coles
+![alt text](image.png)
+
 This is also its own repo, but this one will almost certainly be more up to date. The plan is to make this a web app one day.
 
 ### Product tracking
