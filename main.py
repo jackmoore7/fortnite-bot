@@ -158,9 +158,9 @@ async def ping(ctx):
 async def dalle3(ctx, prompt):
 	await misc_cmd.dalle3(ctx, prompt)
 	
-@discord_client.slash_command(description="Train game - get to 10")
-async def get_to_ten(ctx, number):
-	await misc_cmd.get_to_ten(ctx, number)
+@discord_client.slash_command(description="Train game - get to target using +-*/^")
+async def train_game(ctx, number, target=10):
+	await misc_cmd.train_game(ctx, number, target)
 
 '''
 	Discord events

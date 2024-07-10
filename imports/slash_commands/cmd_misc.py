@@ -12,19 +12,20 @@ async def dalle3(ctx, prompt):
 	await ctx.defer()
 	await ctx.respond(api_openai.dalle_prompt(prompt))
 
-async def get_to_ten(ctx, number):
+async def train_game(ctx, number, target):
 	try:
+		target = int(target)
 		if len(number) != 4:
-			await ctx.respond("Please give a four digit number (0000-9999)")
+			await ctx.respond("`" + str(number) + "` is not valid for the train game. Please give a four digit number (0000-9999).")
 		else:
 			a = int(number[0]) # these will raise an exception if they can't convert
 			b = int(number[1])
 			c = int(number[2])
 			d = int(number[3])
-			response = get_to_x(10, a, b, c, d)
+			response = get_to_x(target, a, b, c, d)
 			num_of_solutions = len(response)
 			if num_of_solutions == 0:
-				await ctx.respond("There are no solutions for `" + str(number) + "`")
+				await ctx.respond("There are no solutions for `" + str(number) + "` to get to target " + str(target))
 			else:
 				pages = []
 				response_start = "All " + str(num_of_solutions) + " solutions"
@@ -34,7 +35,7 @@ async def get_to_ten(ctx, number):
 					response_start = "Both solutions"
 				formatted = check_list_length(response)
 				for result_list in formatted:
-					embed = discord.Embed(title="Results for train game with number " + str(number))
+					embed = discord.Embed(title="Results for train game with number " + str(number) + " and target " + str(target))
 					embed.add_field(name=response_start, value='\n'.join(result_list))
 					pages.append(Page(embeds=[embed]))
 				paginator = Paginator(pages=pages)
@@ -121,14 +122,12 @@ def get_to_x(x, a, b, c, d):
 	for _ in range(0, 4): # the list looks like ass if you don't do this (flatten 4 times cause 4 numbers deep)
 		successions = list(itertools.chain.from_iterable(successions))
 	
+	# turn the list into a set (we need the inner loop because a list isn't hashable and can't be directly added to a set)
 	solutions = set()
 	for success in successions:
 		solution = ""
 		for character in success:
-			solution += character
-		solution = solution.replace("+0","").replace("-0", "").replace("0*0", "").replace("0^0", "")
-		if solution[0] == "+":
-			solution = solution[1:]
+			solution += character 
 		solutions.add(solution)
 
 	return sorted(solutions)
@@ -157,7 +156,7 @@ def solve(num1, op, num2):
 def breakdown_expression(sol0):
 	# ((0+9)+0)+1 -> (9+0)+1 -> 9+1 -> 10
 	if len(sol0) != 11:
-		print("Somehow got a solution the wrong length (" + str(len(sol0)) + "): " + sol0)
+		print("Somehow got a solution the wrong length (" + str(len(sol0)) + "): " + sol0 + "\nExpected the form (([num] [operation] [num]) [operation] [num]) [operation] [num]")
 		return sol0
 	
 	so_far = solve(sol0[2], sol0[3], sol0[4])
@@ -175,7 +174,7 @@ def format_train_solution(solutions):
     formatted = []
     for sol in solutions:
         sol = place_brackets(sol)
-        sol = str(breakdown_expression(sol))  # only cast here so python knows its a string even though it always is
+        sol = str(breakdown_expression(sol)) # only cast here so python knows its a string even though it always is
         sol = sol.replace("*", "\*")
         formatted.append(sol)
     return formatted
