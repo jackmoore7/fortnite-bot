@@ -240,10 +240,14 @@ async def coles_specials_bg():
 				field_names = ['Price', 'Promotion', 'Available']
 				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
 					if name == 'Price':
-						field_value = f"~~${old_value}~~\n${float(new_value)} ({helpers.percentage_change(old_value, new_value)})" if old_value != new_value else f"${new_value}"
+						if new_value is None:
+							field_value = f"~~${old_value}~~\nPrice not specified"
+						else:
+							field_value = f"~~${old_value}~~\n${float(new_value)} ({helpers.percentage_change(old_value, new_value)})" if old_value != new_value else f"${new_value}"
 					elif name == 'Promotion' and item2[10]:
 						field_value = f"~~{bool(old_value)}~~\n{new_value} ({item2[10]})" if old_value != new_value else f"{new_value} ({item2[10]})"
 					else:
+
 						field_value = f"~~{bool(old_value)}~~\n{new_value}" if old_value != new_value else new_value
 					embed.add_field(name=name, value=field_value, inline=False)
 				if item2[7]:

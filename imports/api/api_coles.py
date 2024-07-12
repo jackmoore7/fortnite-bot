@@ -51,7 +51,7 @@ def get_items(id_list):
 		image_url = "https://productimages.coles.com.au/productimages" + item['imageUris'][0]['uri']
 		try:
 			current_price = item['pricing']['now']
-		except TypeError:
+		except:
 			current_price = None
 		if item.get('pricing') and item['pricing'].get('promotionType'):
 			on_sale = True
@@ -59,7 +59,10 @@ def get_items(id_list):
 		else:
 			on_sale = False
 			promotion_type = ""
-		available = item['availability']
+		try:
+			available = item['availability']
+		except:
+			available = None
 		if item.get('pricing') and item['pricing'].get('offerDescription'):
 			offer_description = item['pricing']['offerDescription']
 		else:
