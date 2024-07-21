@@ -58,10 +58,7 @@ async def message(message):
 	for attachment in message.attachments:
 		attachment_type, _ = attachment.content_type.split('/')
 		if attachment_type == 'video':
-			if attachment.size > 52428800:
-				link_message = attachment.url + "Media is too large to embed - please jump to the original message"
-			else:
-				link_message = attachment.url
+			link_message = attachment.url
 			channel = discord_client.get_channel(int(os.getenv('CLIPS_CHANNEL')))
 			button = Button(label="Jump", style=discord.ButtonStyle.link, url=message.jump_url)
 			view = View()
