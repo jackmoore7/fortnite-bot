@@ -82,13 +82,6 @@ async def voice_state_update(member, before, after):
         return
     if before.channel is None and after.channel is not None:
         print(f"{member} joined {after.channel.id}")
-        users = cursor.execute("SELECT * from pingme").fetchall()
-        users_id = [user[0] for user in users]
-        if member.id in users_id:
-            return
-        else:
-            for user_id in users_id:
-                await after.channel.send(f"<@{user_id}>, {member} just joined.")
 
 async def reaction(reaction, user):
 	if user == discord_client.user:

@@ -36,7 +36,6 @@ def test_port():
             subprocess.run(ssh_command, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error: {e}")
-        print(f"Port was changed from {old_port} to {new_port}. Restarting container.")
         return f"Port was changed from {old_port} to {new_port}. Restarting container."
     except Exception as e:
         print(e)

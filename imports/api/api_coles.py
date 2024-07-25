@@ -25,11 +25,11 @@ def search_item(query):
 	query = urllib.parse.quote(query)
 	build_version = cursor.execute(select_coles_version).fetchone()[0]
 	url = "https://www.coles.com.au/_next/data/"
-	r = requests.get(url + build_version + "/en/search.json?q=" + query, headers=headers, verify=False)
+	r = requests.get(url + build_version + "/en/search/products.json?q=" + query, headers=headers, verify=False)
 	if r.status_code == 404:
 		update_build_number()
 		build_version = cursor.execute(select_coles_version).fetchone()[0]
-		r = requests.get(url + build_version + "/en/search.json?q=" + query, headers=headers, verify=False)
+		r = requests.get(url + build_version + "/en/search/products.json?q=" + query, headers=headers, verify=False)
 		if r.status_code == 404:
 			return "Your search returned a 404"
 	r = r.json()

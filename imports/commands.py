@@ -16,6 +16,27 @@ def is_owner(ctx):
 	Owner only commands
 '''
 
+def coles_edit_2(item_id):
+	result = api_coles.get_items([item_id])
+	result = result['items'][0]
+	if result:
+		item_id = result[0]
+		name = result[1]
+		brand = result[2]
+		description = result[3]
+		current_price = result[4]
+		on_sale = result[5]
+		available = result[6]
+		result_db = api_coles.cursor.execute("SELECT * FROM coles_specials WHERE id = ?", (item_id,)).fetchone()
+		if result_db:
+			api_coles.cursor.execute("DELETE FROM coles_specials WHERE id = ?", (item_id,))
+			return f"Removed {brand} {name} from your list"
+		else:
+			api_coles.cursor.execute("INSERT INTO coles_specials VALUES (?, ?, ?, ?, ?, ?, ?)", (item_id, name, brand, description, current_price, on_sale, available))
+			return f"Added {brand} {name} to your list"
+	else:
+		return result
+
 async def coles_edit(ctx, item_id):
 	if not is_owner(ctx):
 		await ctx.respond(nice_try)
@@ -68,6 +89,19 @@ async def coles_list(ctx):
 async def coles_search(ctx, string):
 	await ctx.defer()
 	results = api_coles.search_item(string)
+
+	class view(discord.ui.View):
+		def __init__(self, item_id: int):
+			super().__init__()
+			self.item_id = item_id
+
+		@discord.ui.button(label="Track", style=discord.ButtonStyle.primary, custom_id="track_button")
+		async def button_callback(self, button: discord.ui.Button, interaction: discord.Interaction):
+			if is_owner(ctx):
+				await interaction.response.send_message(coles_edit_2(self.item_id))
+			else:
+				await interaction.response.send_message("You don't have permission to edit this list.", ephemeral=True)
+
 	if results:
 		url = "https://productimages.coles.com.au/productimages"
 		num_results = results['noOfResults']
@@ -82,7 +116,7 @@ async def coles_search(ctx, string):
 			embed.set_image(url=url + item[3])
 			embed.add_field(name="ID", value=item[0])
 			embed.set_footer(text=f"Returned {num_results} results")
-			pages.append(Page(content=f"{item[2]} {item[1]}", embeds=[embed]))
+			pages.append(Page(content=f"{item[2]} {item[1]}", embeds=[embed], custom_view=view(item_id=item[0])))
 		paginator = Paginator(pages=pages)
 		await paginator.respond(ctx.interaction)
 	else:
