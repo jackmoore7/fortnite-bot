@@ -171,13 +171,16 @@ def breakdown_expression(sol0):
 	return sol0 + " -> " + sol1 + " -> " + sol2 + " -> " + sol3
 
 def format_train_solution(solutions):
-    formatted = []
-    for sol in solutions:
-        sol = place_brackets(sol)
-        sol = str(breakdown_expression(sol)) # only cast here so python knows its a string even though it always is
-        sol = sol.replace("*", "\*")
-        formatted.append(sol)
-    return formatted
+	formatted = []
+	sol_num = 0
+	for sol in solutions:
+		sol_num += 1
+		sol = place_brackets(sol)
+		sol = str(breakdown_expression(sol)) # only cast here so python knows its a string even though it always is
+		sol = sol.replace("*", "\*")
+		sol = str(sol_num) + ") " + sol
+		formatted.append(sol)
+	return formatted
 
 def check_list_length(solutions):
 	formatted_list = format_train_solution(solutions)
