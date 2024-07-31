@@ -58,6 +58,10 @@ async def list(ctx):
 async def search(ctx, string):
 	await cmd.coles_search(ctx, string)
 
+@coles_group.command(description="View the price over time of a tracked item")
+async def graph(ctx, id):
+	await cmd.generate_graph(ctx, id)
+
 @notifyme_group.command(description="Add or remove a cosmetic")
 async def edit(ctx, item):
 	await cmd.notifyme_edit(ctx, item)

@@ -1,0 +1,70 @@
+[0;1;32m●[0m heh.service - Heh discord bot
+     Loaded: loaded (/etc/systemd/system/heh.service; enabled; vendor preset: enabled)
+     Active: [0;1;32mactive (running)[0m since Wed 2024-07-31 15:09:04 AEST; 2s ago
+   Main PID: 1351 (python3)
+      Tasks: 1 (limit: 3933)
+        CPU: 2.107s
+     CGroup: /system.slice/heh.service
+             └─1351 /usr/bin/python3 -u main.py
+
+Jul 31 15:09:06 raspberrypi python3[1351]: ImportError: Error importing numpy: you should not try to import numpy from
+Jul 31 15:09:06 raspberrypi python3[1351]:         its source directory; please exit the numpy source tree, and relaunch
+Jul 31 15:09:06 raspberrypi python3[1351]:         your python interpreter from there.
+Jul 31 15:09:07 raspberrypi systemd[1]: [0;1;39m[0;1;31m[0;1;39mheh.service: Main process exited, code=exited, status=1/FAILURE[0m
+Jul 31 15:09:07 raspberrypi systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mheh.service: Failed with result 'exit-code'.[0m
+Jul 31 15:09:07 raspberrypi systemd[1]: [0;1;39m[0;1;31m[0;1;39mheh.service: Consumed 2.359s CPU time.[0m
+Jul 31 15:09:07 raspberrypi systemd[1]: heh.service: Scheduled restart job, restart counter is at 51.
+Jul 31 15:09:07 raspberrypi systemd[1]: Stopped Heh discord bot.
+Jul 31 15:09:07 raspberrypi systemd[1]: [0;1;39m[0;1;31m[0;1;39mheh.service: Consumed 2.359s CPU time.[0m
+Jul 31 15:09:07 raspberrypi systemd[1]: Started Heh discord bot.
+Jul 31 15:09:09 raspberrypi python3[1355]: Traceback (most recent call last):
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/numpy/core/__init__.py", line 24, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     from . import multiarray
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/numpy/core/multiarray.py", line 10, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     from . import overrides
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/numpy/core/overrides.py", line 8, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     from numpy.core._multiarray_umath import (
+Jul 31 15:09:09 raspberrypi python3[1355]: ImportError: libopenblas.so.0: cannot open shared object file: No such file or directory
+Jul 31 15:09:09 raspberrypi python3[1355]: During handling of the above exception, another exception occurred:
+Jul 31 15:09:09 raspberrypi python3[1355]: Traceback (most recent call last):
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/numpy/__init__.py", line 130, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     from numpy.__config__ import show as show_config
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/numpy/__config__.py", line 4, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     from numpy.core._multiarray_umath import (
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/numpy/core/__init__.py", line 50, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     raise ImportError(msg)
+Jul 31 15:09:09 raspberrypi python3[1355]: ImportError:
+Jul 31 15:09:09 raspberrypi python3[1355]: IMPORTANT: PLEASE READ THIS FOR ADVICE ON HOW TO SOLVE THIS ISSUE!
+Jul 31 15:09:09 raspberrypi python3[1355]: Importing the numpy C-extensions failed. This error can happen for
+Jul 31 15:09:09 raspberrypi python3[1355]: many reasons, often due to issues with your setup or how NumPy was
+Jul 31 15:09:09 raspberrypi python3[1355]: installed.
+Jul 31 15:09:09 raspberrypi python3[1355]: We have compiled some common reasons and troubleshooting tips at:
+Jul 31 15:09:09 raspberrypi python3[1355]:     https://numpy.org/devdocs/user/troubleshooting-importerror.html
+Jul 31 15:09:09 raspberrypi python3[1355]: Please note and check the following:
+Jul 31 15:09:09 raspberrypi python3[1355]:   * The Python version is: Python3.9 from "/usr/bin/python3"
+Jul 31 15:09:09 raspberrypi python3[1355]:   * The NumPy version is: "1.26.4"
+Jul 31 15:09:09 raspberrypi python3[1355]: and make sure that they are the versions you expect.
+Jul 31 15:09:09 raspberrypi python3[1355]: Please carefully study the documentation linked above for further help.
+Jul 31 15:09:09 raspberrypi python3[1355]: Original error was: libopenblas.so.0: cannot open shared object file: No such file or directory
+Jul 31 15:09:09 raspberrypi python3[1355]: The above exception was the direct cause of the following exception:
+Jul 31 15:09:09 raspberrypi python3[1355]: Traceback (most recent call last):
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/Documents/discord/main.py", line 14, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     import imports.commands as cmd
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/Documents/discord/imports/commands.py", line 11, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     import matplotlib.pyplot as plt
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/matplotlib/__init__.py", line 159, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     from . import _api, _version, cbook, _docstring, rcsetup
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/matplotlib/cbook.py", line 24, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     import numpy as np
+Jul 31 15:09:09 raspberrypi python3[1355]:   File "/home/hecko/.local/lib/python3.9/site-packages/numpy/__init__.py", line 135, in <module>
+Jul 31 15:09:09 raspberrypi python3[1355]:     raise ImportError(msg) from e
+Jul 31 15:09:09 raspberrypi python3[1355]: ImportError: Error importing numpy: you should not try to import numpy from
+Jul 31 15:09:09 raspberrypi python3[1355]:         its source directory; please exit the numpy source tree, and relaunch
+Jul 31 15:09:09 raspberrypi python3[1355]:         your python interpreter from there.
+Jul 31 15:09:09 raspberrypi systemd[1]: [0;1;39m[0;1;31m[0;1;39mheh.service: Main process exited, code=exited, status=1/FAILURE[0m
+Jul 31 15:09:09 raspberrypi systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mheh.service: Failed with result 'exit-code'.[0m
+Jul 31 15:09:09 raspberrypi systemd[1]: [0;1;39m[0;1;31m[0;1;39mheh.service: Consumed 2.272s CPU time.[0m
+Jul 31 15:09:09 raspberrypi systemd[1]: heh.service: Scheduled restart job, restart counter is at 52.
+Jul 31 15:09:09 raspberrypi systemd[1]: Stopped Heh discord bot.
+Jul 31 15:09:09 raspberrypi systemd[1]: [0;1;39m[0;1;31m[0;1;39mheh.service: Consumed 2.272s CPU time.[0m
+Jul 31 15:09:09 raspberrypi systemd[1]: Started Heh discord bot.

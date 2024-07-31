@@ -240,7 +240,8 @@ async def coles_specials_bg():
 				field_names = ['Price', 'Promotion', 'Available']
 				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
 					if name == 'Price':
-						cursor.execute("INSERT INTO coles_price_history (id, price, date) VALUES (?, ?, ?)", (item2[0], item2[4], dt.now(pytz.timezone('Australia/Sydney').strftime('%Y-%m-%d %H:%M:%S'))))
+						if old_value != new_value:
+							cursor.execute("INSERT INTO coles_price_history (id, price, date) VALUES (?, ?, ?)", (item2[0], item2[4], dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')))
 						if new_value is None:
 							field_value = f"~~${old_value}~~\nPrice not specified"
 						else:

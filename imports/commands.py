@@ -8,6 +8,8 @@ from imports.helpers import nice_try, removed, added
 from imports.core_utils import cursor
 import imports.api.api_coles as api_coles
 import imports.api.api_lego as api_lego
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 def is_owner(ctx):
 	return ctx.user.id == int(os.getenv('ME'))
@@ -121,6 +123,25 @@ async def coles_search(ctx, string):
 		await paginator.respond(ctx.interaction)
 	else:
 		await ctx.respond("Something went wrong. Please try again.")
+
+async def generate_graph(ctx, id):
+	await ctx.defer()
+	data = cursor.execute("SELECT * FROM coles_price_history WHERE id = ?", (id,)).fetchall()
+	if not data:
+		await ctx.respond(f"No results for `{id}`")
+		return
+	timestamps = [datetime.strptime(item[2], '%Y-%m-%d %H:%M:%S') for item in data]
+	values = [float(item[1]) for item in data]
+	plt.figure(figsize=(10, 5))
+	plt.title(f"Price over time for {id}")
+	plt.plot(timestamps, values, marker='o', linestyle='-')
+	plt.xticks(rotation=45)
+	plt.grid(True)
+	plt.tight_layout()
+	plt.savefig('plot.png')
+	await ctx.edit(file=discord.File("plot.png"))
+	if os.path.exists("plot.png"):
+		os.remove("plot.png")
 
 '''
 	Notifyme commands
