@@ -57,11 +57,11 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 	nums = nums[1:]
 	
 	if len(nums) == 3: # first number (remember, we took one off)
-		attempt = attempt_get_x(x, nums, current_num, [str(current_num)])
+		attempt = attempt_get_x(x, nums, current_num, [str(current_num)]) # just try the first number by itself
 		if attempt is not None:
 			successions.append(attempt)
 	else:
-		# make a new copy of what we've done, then add on what we're going to do
+		# make a new copy of what we've done, so there are no annoying shallow copies
 		ops_add = copy.deepcopy(current_operations)
 		ops_sub = copy.deepcopy(current_operations)
 		ops_mul = copy.deepcopy(current_operations)
@@ -69,6 +69,7 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 		ops_pow = copy.deepcopy(current_operations)
 		ops_mod = copy.deepcopy(current_operations)
 
+		# show which operation we're doing
 		ops_add.append('+')
 		ops_sub.append('-')
 		ops_mul.append('*')
@@ -76,6 +77,7 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 		ops_pow.append('^')
 		ops_mod.append('%')
 
+		# show what number we're doing the operation on
 		ops_add.append(str(current_num))
 		ops_sub.append(str(current_num))
 		ops_mul.append(str(current_num))
@@ -83,6 +85,7 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 		ops_pow.append(str(current_num))
 		ops_mod.append(str(current_num))
 
+		# attempt the operation
 		attempt_add = current_total + current_num
 		attempt_sub = current_total - current_num
 		attempt_mul = current_total * current_num
@@ -93,47 +96,36 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 		attempt_mod = current_total % current_num
 
 		if len(nums) == 0: # last number, no more recursion
-			if attempt_add == x:
+			if attempt_add == x: # addition
 				successions.append(ops_add)
-			if attempt_sub == x:
+			if attempt_sub == x: # subtraction
 				successions.append(ops_sub)
-			if attempt_mul == x:
+			if attempt_mul == x: # mutiplication
 				successions.append(ops_mul)
-			if attempt_div != None and attempt_div == x:
+			if attempt_div != None and attempt_div == x: # division
 				successions.append(ops_div)
-			if attempt_pow == x:
+			if attempt_pow == x: # exponentiation
 				successions.append(ops_pow)
-			if attempt_mod == x:
+			if attempt_mod == x: # modulo
 				successions.append(ops_pow)
 		else: # numbers in between
-			# addition
-			attempt = attempt_get_x(x, nums, attempt_add, ops_add)
+			attempt = attempt_get_x(x, nums, attempt_add, ops_add) # addition
 			if attempt is not None:
 				successions.append(attempt)
-
-			# subtraction
-			attempt = attempt_get_x(x, nums, attempt_sub, ops_sub)
+			attempt = attempt_get_x(x, nums, attempt_sub, ops_sub) # subtraction
 			if attempt is not None:
 				successions.append(attempt)
-
-			# multiplication
-			attempt = attempt_get_x(x, nums, attempt_mul, ops_mul)
+			attempt = attempt_get_x(x, nums, attempt_mul, ops_mul) # multiplication
 			if attempt is not None:
 				successions.append(attempt)
-
-			# division
 			if current_num != 0:
-				attempt = attempt_get_x(x, nums, attempt_div, ops_div)
+				attempt = attempt_get_x(x, nums, attempt_div, ops_div) # division
 				if attempt is not None:
 					successions.append(attempt)
-
-			# exponentiation
-			attempt = attempt_get_x(x, nums, pow(current_total, current_num), ops_pow)
+			attempt = attempt_get_x(x, nums, attempt_pow, ops_pow) # exponentiation
 			if attempt is not None:
 				successions.append(attempt)
-
-			# modulo			
-			attempt = attempt_get_x(x, nums, current_total, ops_mod)
+			attempt = attempt_get_x(x, nums, current_total, ops_mod) # modulo
 			if attempt is not None:
 				successions.append(attempt)
 
