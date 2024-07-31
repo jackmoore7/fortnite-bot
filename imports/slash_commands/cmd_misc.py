@@ -67,45 +67,73 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 		ops_mul = copy.deepcopy(current_operations)
 		ops_div = copy.deepcopy(current_operations)
 		ops_pow = copy.deepcopy(current_operations)
+		ops_mod = copy.deepcopy(current_operations)
 
 		ops_add.append('+')
 		ops_sub.append('-')
 		ops_mul.append('*')
 		ops_div.append('/')
 		ops_pow.append('^')
+		ops_mod.append('%')
 
 		ops_add.append(str(current_num))
 		ops_sub.append(str(current_num))
 		ops_mul.append(str(current_num))
 		ops_div.append(str(current_num))
 		ops_pow.append(str(current_num))
+		ops_mod.append(str(current_num))
+
+		attempt_add = current_total + current_num
+		attempt_sub = current_total - current_num
+		attempt_mul = current_total * current_num
+		attempt_div = None
+		if current_num != 0:
+			attempt_div = current_total / current_num
+		attempt_pow = current_total ** current_num
+		attempt_mod = current_total % current_num
 
 		if len(nums) == 0: # last number, no more recursion
-			if ops_add is not None and current_total + current_num == x:
+			if attempt_add == x:
 				successions.append(ops_add)
-			if ops_sub is not None and current_total - current_num == x:
+			if attempt_sub == x:
 				successions.append(ops_sub)
-			if ops_mul is not None and current_total * current_num == x:
+			if attempt_mul == x:
 				successions.append(ops_mul)
-			if ops_div is not None and current_num != 0 and current_total / current_num == x:
+			if attempt_div != None and attempt_div == x:
 				successions.append(ops_div)
-			if ops_pow is not None and pow(current_total, current_num) == x:
+			if attempt_pow == x:
+				successions.append(ops_pow)
+			if attempt_mod == x:
 				successions.append(ops_pow)
 		else: # numbers in between
-			attempt = attempt_get_x(x, nums, current_total + current_num, ops_add)
+			# addition
+			attempt = attempt_get_x(x, nums, attempt_add, ops_add)
 			if attempt is not None:
 				successions.append(attempt)
-			attempt = attempt_get_x(x, nums, current_total - current_num, ops_sub)
+
+			# subtraction
+			attempt = attempt_get_x(x, nums, attempt_sub, ops_sub)
 			if attempt is not None:
 				successions.append(attempt)
-			attempt = attempt_get_x(x, nums, current_total * current_num, ops_mul)
+
+			# multiplication
+			attempt = attempt_get_x(x, nums, attempt_mul, ops_mul)
 			if attempt is not None:
 				successions.append(attempt)
+
+			# division
 			if current_num != 0:
-				attempt = attempt_get_x(x, nums, current_total / current_num, ops_div)
+				attempt = attempt_get_x(x, nums, attempt_div, ops_div)
 				if attempt is not None:
 					successions.append(attempt)
+
+			# exponentiation
 			attempt = attempt_get_x(x, nums, pow(current_total, current_num), ops_pow)
+			if attempt is not None:
+				successions.append(attempt)
+
+			# modulo			
+			attempt = attempt_get_x(x, nums, current_total, ops_mod)
 			if attempt is not None:
 				successions.append(attempt)
 
@@ -146,7 +174,9 @@ def solve(num1, op, num2):
 	elif op == "/":
 		result = float(num1) / float(num2)
 	elif op == "^":
-		result = pow(float(num1), float(num2))
+		result = float(num1) ** float(num2)
+	elif op == "%":
+		result = float(num1) % float(num2)
 	
 	if result == int(result):
 		return int(result)
