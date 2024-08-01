@@ -33,7 +33,7 @@ async def train_game(ctx, number, target):
 					response_start = "The only solution"
 				elif num_of_solutions == 2:
 					response_start = "Both solutions"
-				formatted = format_all_solutions(response)
+				formatted = format_and_paginate_all_solutions(response)
 				for result_list in formatted:
 					embed = discord.Embed(title="Results for train game with number " + str(number) + " and target " + str(target))
 					embed.add_field(name=response_start, value='\n'.join(result_list))
@@ -132,7 +132,7 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 				successions.append(attempt)
 
 			if attempt_mod is not None:
-				attempt = attempt_get_x(x, nums, current_total, ops_mod) # modulo
+				attempt = attempt_get_x(x, nums, attempt_mod, ops_mod) # modulo
 				if attempt is not None:
 					successions.append(attempt)
 
@@ -199,18 +199,18 @@ def breakdown_expression(sol0):
 
 	return sol0 + " -> " + sol1 + " -> " + sol2 + " -> " + sol3
 
-def format_single_solution(solutions:str):
+def solve_and_format_solutions(solutions:str):
 	formatted = []
 	sol_num = 0
 	for sol in solutions:
 		sol_num += 1
 		sol = breakdown_expression(place_brackets(sol)).replace("*", "\*")
-		sol = "**" + str(sol_num) + ")**\t" + sol
+		sol = "**" + str(sol_num) + ")** " + sol
 		formatted.append(sol)
 	return formatted
 
-def format_all_solutions(solutions):
-	formatted_list = format_single_solution(solutions)
+def format_and_paginate_all_solutions(solutions):
+	formatted_list = solve_and_format_solutions(solutions)
 	total_length = sum(len(solution) for solution in formatted_list)
 	if total_length > 1000:
 		current_length = 0
