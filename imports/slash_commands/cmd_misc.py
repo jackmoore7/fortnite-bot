@@ -33,7 +33,7 @@ async def train_game(ctx, number, target):
 					response_start = "The only solution"
 				elif num_of_solutions == 2:
 					response_start = "Both solutions"
-				formatted = format_and_paginate_all_solutions(response)
+				formatted = format_and_paginate_all_solutions(response, target)
 				for result_list in formatted:
 					embed = discord.Embed(title="Results for train game with number " + str(number) + " and target " + str(target))
 					embed.add_field(name=response_start, value='\n'.join(result_list))
@@ -182,7 +182,7 @@ def solve(num1, op, num2):
 	else:
 		return float("{:.3f}".format(result))
 
-def breakdown_expression(sol0):
+def breakdown_expression(sol0, target):
 	# ((0+9)+0)+1 -> (9+0)+1 -> 9+1 -> 10
 	if len(sol0) != 11:
 		print("Somehow got a solution the wrong length (" + str(len(sol0)) + "): " + sol0 + "\nExpected the form (([num] [operation] [num]) [operation] [num]) [operation] [num]")
@@ -197,20 +197,26 @@ def breakdown_expression(sol0):
 	so_far = solve(so_far, sol0[9], sol0[10])
 	sol3 = str(so_far)
 
+	if sol3 != target:
+		return None
+
 	return sol0 + " -> " + sol1 + " -> " + sol2 + " -> " + sol3
 
-def solve_and_format_solutions(solutions:str):
+def solve_and_format_solutions(solutions:str, target):
 	formatted = []
 	sol_num = 0
 	for sol in solutions:
 		sol_num += 1
-		sol = breakdown_expression(place_brackets(sol)).replace("*", "\*")
+		sol = breakdown_expression(place_brackets(sol), target)
+		if sol is None:
+			continue
+		sol.replace("*", "\*")
 		sol = "**" + str(sol_num) + ")** " + sol
 		formatted.append(sol)
 	return formatted
 
-def format_and_paginate_all_solutions(solutions):
-	formatted_list = solve_and_format_solutions(solutions)
+def format_and_paginate_all_solutions(solutions, target):
+	formatted_list = solve_and_format_solutions(solutions, target)
 	total_length = sum(len(solution) for solution in formatted_list)
 	if total_length > 1000:
 		current_length = 0
