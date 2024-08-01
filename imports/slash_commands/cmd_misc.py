@@ -33,7 +33,7 @@ async def train_game(ctx, number, target):
 					response_start = "The only solution"
 				elif num_of_solutions == 2:
 					response_start = "Both solutions"
-				formatted = check_list_length(response)
+				formatted = format_all_solutions(response)
 				for result_list in formatted:
 					embed = discord.Embed(title="Results for train game with number " + str(number) + " and target " + str(target))
 					embed.add_field(name=response_start, value='\n'.join(result_list))
@@ -86,14 +86,15 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 		ops_mod.append(str(current_num))
 
 		# attempt the operation
+		attempt_div = None
+		attempt_mod = None
+		if current_num != 0:
+			attempt_div = current_total / current_num
+			attempt_mod = current_total % current_num
 		attempt_add = current_total + current_num
 		attempt_sub = current_total - current_num
 		attempt_mul = current_total * current_num
-		attempt_div = None
-		if current_num != 0:
-			attempt_div = current_total / current_num
 		attempt_pow = current_total ** current_num
-		attempt_mod = current_total % current_num
 
 		if len(nums) == 0: # last number, no more recursion
 			if attempt_add == x: # addition
@@ -102,32 +103,38 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 				successions.append(ops_sub)
 			if attempt_mul == x: # mutiplication
 				successions.append(ops_mul)
-			if attempt_div != None and attempt_div == x: # division
+			if attempt_div is not None and attempt_div == x: # division
 				successions.append(ops_div)
 			if attempt_pow == x: # exponentiation
 				successions.append(ops_pow)
-			if attempt_mod == x: # modulo
+			if attempt_mod is not None and attempt_mod == x: # modulo
 				successions.append(ops_pow)
 		else: # numbers in between
 			attempt = attempt_get_x(x, nums, attempt_add, ops_add) # addition
 			if attempt is not None:
 				successions.append(attempt)
+
 			attempt = attempt_get_x(x, nums, attempt_sub, ops_sub) # subtraction
 			if attempt is not None:
 				successions.append(attempt)
+
 			attempt = attempt_get_x(x, nums, attempt_mul, ops_mul) # multiplication
 			if attempt is not None:
 				successions.append(attempt)
-			if current_num != 0:
+
+			if attempt_div is not None:
 				attempt = attempt_get_x(x, nums, attempt_div, ops_div) # division
 				if attempt is not None:
 					successions.append(attempt)
+
 			attempt = attempt_get_x(x, nums, attempt_pow, ops_pow) # exponentiation
 			if attempt is not None:
 				successions.append(attempt)
-			attempt = attempt_get_x(x, nums, current_total, ops_mod) # modulo
-			if attempt is not None:
-				successions.append(attempt)
+
+			if attempt_mod is not None:
+				attempt = attempt_get_x(x, nums, current_total, ops_mod) # modulo
+				if attempt is not None:
+					successions.append(attempt)
 
 	return successions
 
@@ -192,20 +199,18 @@ def breakdown_expression(sol0):
 
 	return sol0 + " -> " + sol1 + " -> " + sol2 + " -> " + sol3
 
-def format_train_solution(solutions):
+def format_single_solution(solutions:str):
 	formatted = []
 	sol_num = 0
 	for sol in solutions:
 		sol_num += 1
-		sol = place_brackets(sol)
-		sol = str(breakdown_expression(sol)) # only cast here so python knows its a string even though it always is
-		sol = sol.replace("*", "\*")
-		sol = str(sol_num) + ") " + sol
+		sol = breakdown_expression(place_brackets(sol)).replace("*", "\*")
+		sol = "**" + str(sol_num) + ")**\t" + sol
 		formatted.append(sol)
 	return formatted
 
-def check_list_length(solutions):
-	formatted_list = format_train_solution(solutions)
+def format_all_solutions(solutions):
+	formatted_list = format_single_solution(solutions)
 	total_length = sum(len(solution) for solution in formatted_list)
 	if total_length > 1000:
 		current_length = 0
