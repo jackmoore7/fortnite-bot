@@ -197,7 +197,7 @@ def breakdown_expression(sol0, target):
 	so_far = solve(so_far, sol0[9], sol0[10])
 	sol3 = str(so_far)
 
-	if sol3 != target:
+	if int(sol3) != int(target):
 		return None
 
 	return sol0 + " -> " + sol1 + " -> " + sol2 + " -> " + sol3
@@ -210,7 +210,7 @@ def solve_and_format_solutions(solutions:str, target):
 		sol = breakdown_expression(place_brackets(sol), target)
 		if sol is None:
 			continue
-		sol.replace("*", "\*")
+		sol = sol.replace("*", "\*")
 		sol = "**" + str(sol_num) + ")** " + sol
 		formatted.append(sol)
 	return formatted
