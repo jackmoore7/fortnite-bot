@@ -27,6 +27,7 @@ import imports.api.api_seveneleven as api_seveneleven
 start_time = time(20, 1, 0)
 end_time = time(7, 0, 0)
 time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minute in range(0, 60, 1)] + [time(hour, minute) for hour in range(end_time.hour + 1) for minute in range(0, 60, 1)]
+coles_time = [time(4, 0)]
 
 async def tasks_on_ready():
 	await discord_client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="me booty arrrr"))
@@ -519,3 +520,66 @@ async def fuel_check():
 	except Exception as e:
 		# await channel.send(f"Uh oh {e}")
 		print(f"fuel loop encountered an exception: {e}")
+
+@tasks.loop(time=coles_time)
+async def coles_updates():
+	channel = discord_client.get_channel(int(os.getenv('COLES_UPDATES_CHANNEL')))
+	most_recent_id = cursor.execute("SELECT id FROM coles_active_ids ORDER BY id DESC LIMIT 1").fetchone()[0]
+	ids = [i for i in range(most_recent_id+1, most_recent_id+500)]
+	results = api_coles.get_items(ids)
+	new_active_ids = []
+	for item in results['items']:
+		if item[4]:
+			new_active_ids.append(item[0])
+	if new_active_ids:
+		insert_data = [(id,) for id in new_active_ids]
+		cursor.executemany("INSERT INTO coles_active_ids (id) VALUES (?)", insert_data)
+		print(f"Inserted {len(new_active_ids)} new IDs.")
+		for id in new_active_ids:
+			channel.send(f"https://coles.com.au/product/{id} was added to the database.")
+
+	active_ids = cursor.execute("SELECT id FROM coles_active_ids").fetchall()
+	active_ids = [x[0] for x in active_ids]
+
+	batch_size = 350
+	insert_data = []
+
+	for i in range(0, len(active_ids), batch_size):
+		batch = active_ids[i:i+batch_size]
+		results = api_coles.get_items(batch)
+		
+		for item in results['items']:
+			item_id = item[0]
+			item_price = str(item[4])
+			
+			if not item_price:
+				cursor.execute("DELETE FROM coles_active_ids WHERE id = ?", (item_id,))
+				print(f"{item_id} was removed from the database as there was no price data.")
+				channel.send(f"https://coles.com.au/product/{item_id} was discontinued.")
+				continue
+
+			date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')
+			
+			db_price_row = cursor.execute(
+				"SELECT price FROM coles_price_history WHERE id = ? ORDER BY date DESC LIMIT 1",
+				(item_id,)
+			).fetchone()[0]
+			
+			max_price = cursor.execute("SELECT price FROM coles_price_history WHERE id = ? ORDER BY price DESC LIMIT 1", (item_id,)).fetchone()[0]
+			db_price = db_price_row if db_price_row else None
+			if db_price != item_price:
+				insert_data.append((item_id, item_price, date))
+				print(f"Inserted {item_id} with new price {item_price}")
+				if item_price > max_price:
+					channel.send(f"https://coles.com.au/product/{item_id} reached an all-time high.")
+			else:
+				print(f"{item_id} did not need updating")
+
+	if insert_data:
+		cursor.executemany(
+			"INSERT INTO coles_price_history (id, price, date) VALUES (?, ?, ?)", 
+			insert_data
+		)
+		print(f"Inserted {len(insert_data)} new records into the price history.")
+	else:
+		print("No new price data to insert.")
