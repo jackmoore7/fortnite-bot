@@ -9,6 +9,7 @@ from imports.core_utils import cursor
 import imports.api.api_coles as api_coles
 import imports.api.api_lego as api_lego
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from datetime import datetime
 
 def is_owner(ctx):
@@ -130,16 +131,48 @@ async def generate_graph(ctx, id):
 	if not data:
 		await ctx.respond(f"No results for `{id}`")
 		return
+
 	timestamps = [datetime.strptime(item[2], '%Y-%m-%d %H:%M:%S') for item in data]
 	values = [float(item[1]) for item in data]
-	plt.figure(figsize=(10, 5))
-	plt.title(f"Price over time for {id}")
-	plt.plot(timestamps, values, marker='o', linestyle='-')
-	plt.xticks(rotation=45)
-	plt.grid(True)
+
+	fig, ax = plt.subplots(figsize=(12, 6))
+
+	bars = ax.bar(range(len(timestamps)), values, width=0.5, color='#E01A22')
+
+	low_price = min(values)
+	high_price = max(values)
+	price_changes = len([i for i in range(1, len(values)) if values[i] != values[i-1]])
+	different_prices = len(set(values))
+
+	title = f"Price trend for {id}\nLow: \${low_price:.2f} | High: \${high_price:.2f} | {price_changes} price changes | {different_prices} different prices"
+	ax.set_title(title, fontsize=12, fontweight='bold')
+	# ax.set_ylabel("Price ($)", fontsize=10)
+
+	ax.set_xticks(range(len(timestamps)))
+	ax.set_xticklabels([t.strftime('%m/%d/%Y') for t in timestamps], rotation=0, ha='center')
+
+	for bar in bars:
+		height = bar.get_height()
+		ax.text(bar.get_x() + bar.get_width()/2., height,
+				f'${height:.2f}',
+				ha='center', va='bottom')
+
+	y_pos = ax.get_ylim()[0] + (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.05
+	for i, (bar, timestamp) in enumerate(zip(bars, timestamps)):
+		if i == 0:
+			continue
+		days = (timestamps[i] - timestamps[i-1]).days
+		ax.text(bar.get_x() + bar.get_width()/2., y_pos,
+				f'{days}\nDays',
+				ha='center', va='bottom', fontsize=8, color='white')
+
+	ax.grid(axis='y', linestyle='--', alpha=0.7)
+
 	plt.tight_layout()
-	plt.savefig('plot.png')
+	plt.savefig('plot.png', dpi=300, bbox_inches='tight')
+
 	await ctx.edit(file=discord.File("plot.png"))
+
 	if os.path.exists("plot.png"):
 		os.remove("plot.png")
 

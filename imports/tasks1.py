@@ -6,6 +6,7 @@ import asyncio
 import feedparser
 import imghdr
 import pytz
+import re
 
 from datetime import datetime as dt, timedelta
 from datetime import time
@@ -13,8 +14,10 @@ from time import mktime
 from discord.ext import tasks
 from PIL import Image
 from bs4 import BeautifulSoup
+import xml.etree.ElementTree as ET
 
 from imports.core_utils import discord_client, cursor, tasks_list
+from imports.api import api_openai
 import imports.helpers as helpers
 import imports.api.api_third_party as api_third_party
 import imports.api.api_epic as api_epic
@@ -27,7 +30,7 @@ import imports.api.api_seveneleven as api_seveneleven
 start_time = time(20, 1, 0)
 end_time = time(7, 0, 0)
 time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minute in range(0, 60, 1)] + [time(hour, minute) for hour in range(end_time.hour + 1) for minute in range(0, 60, 1)]
-coles_time = [time(4, 0)]
+coles_time = [time(0, 20)]
 
 async def tasks_on_ready():
 	await discord_client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="me booty arrrr"))
@@ -55,6 +58,8 @@ async def tasks_on_ready():
 		fuel_check.start()
 	if not fortnite_shop_update_v3.is_running():
 		fortnite_shop_update_v3.start()
+	if not coles_updates.is_running():
+		coles_updates.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -241,8 +246,8 @@ async def coles_specials_bg():
 				field_names = ['Price', 'Promotion', 'Available']
 				for name, old_value, new_value in zip(field_names, item1[4:], item2[4:]):
 					if name == 'Price':
-						if old_value != new_value:
-							cursor.execute("INSERT INTO coles_price_history (id, price, date) VALUES (?, ?, ?)", (item2[0], item2[4], dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')))
+						# if old_value != new_value:
+						# 	cursor.execute("INSERT INTO coles_price_history (id, price, date) VALUES (?, ?, ?)", (item2[0], item2[4], dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')))
 						if new_value is None:
 							field_value = f"~~${old_value}~~\nPrice not specified"
 						else:
@@ -256,6 +261,7 @@ async def coles_specials_bg():
 				if item2[7]:
 					field_value = f"{item2[7]} - reduces the price per unit to ${item2[8]}" if item2[8] else f"{item2[7]}"
 					embed.add_field(name='Promotion details', value=field_value, inline=False)
+				embed.add_field(name='Recommendation', value=api_openai.coles_recommendation(item2[0], item2[4], dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')), inline=False)
 				await channel.send(embed=embed)
 	except Exception as e:
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
@@ -524,19 +530,81 @@ async def fuel_check():
 @tasks.loop(time=coles_time)
 async def coles_updates():
 	channel = discord_client.get_channel(int(os.getenv('COLES_UPDATES_CHANNEL')))
-	most_recent_id = cursor.execute("SELECT id FROM coles_active_ids ORDER BY id DESC LIMIT 1").fetchone()[0]
-	ids = [i for i in range(most_recent_id+1, most_recent_id+500)]
-	results = api_coles.get_items(ids)
-	new_active_ids = []
-	for item in results['items']:
-		if item[4]:
-			new_active_ids.append(item[0])
-	if new_active_ids:
-		insert_data = [(id,) for id in new_active_ids]
+	headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
+	namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+	pattern = re.compile(r'(\d+)$')
+
+	def get_product_sitemap_urls():
+		url = os.getenv('COLES_SITEMAP_URL')
+		urls = []
+
+		response = requests.get(url, headers=headers)
+		if response.status_code == 200:
+			with open('output.xml', 'wb') as f:
+				f.write(response.content)
+			tree = ET.parse('output.xml')
+			root = tree.getroot()
+			loc_elements = root.findall('.//ns:loc', namespace)
+			for loc in loc_elements:
+				urls.append(loc.text)
+			return urls
+		else:
+			return response.status_code
+		
+
+	def get_products_from_urls(urls):
+		files_list = []
+		for url in urls:
+			index = urls.index(url)
+			files_list.append(f"output{index}.xml")
+			response = requests.get(url, headers=headers)
+			if response.status_code == 200:
+				with open(f'output{index}.xml', 'wb') as f:
+					f.write(response.content)
+			else:
+				return response.status_code
+		return files_list
+
+
+	sitemap_urls = get_product_sitemap_urls()
+
+	files = get_products_from_urls(sitemap_urls)
+
+	# files = ['output0.xml', 'output1.xml']
+
+	products = []
+
+	for file in files:
+		tree = ET.parse(file)
+		root = tree.getroot()
+
+
+		for url_element in root.findall('ns:url', namespace):
+			product_url = url_element.find('ns:loc', namespace).text
+			match = pattern.search(product_url)
+			if match:
+				product_id = match.group(1)
+				products.append(product_id)
+
+	active_ids = cursor.execute("SELECT id FROM coles_active_ids").fetchall()
+	active_ids = [x[0] for x in active_ids]
+
+	new_items = set(products) - {str(id) for id in active_ids}
+	# deleted_items = {str(id) for id in active_ids} - set(products)
+
+	if new_items:
+		product_ids_int = [int(id_str) for id_str in new_items]
+		for id in product_ids_int:
+			await channel.send(f"https://coles.com.au/product/{id} was added to the database.")
+		insert_data = [(id,) for id in product_ids_int]
 		cursor.executemany("INSERT INTO coles_active_ids (id) VALUES (?)", insert_data)
-		print(f"Inserted {len(new_active_ids)} new IDs.")
-		for id in new_active_ids:
-			channel.send(f"https://coles.com.au/product/{id} was added to the database.")
+
+	# if deleted_items:
+	# 	deleted_items_int = [int(id_str) for id_str in deleted_items]
+	# 	for id in deleted_items_int:
+	# 		await channel.send(f"https://coles.com.au/product/{id} was removed from the database.")
+	# 	placeholder = ', '.join('?' for _ in deleted_items_int)  # Create a placeholder for each ID
+	# 	cursor.execute(f"DELETE FROM coles_active_ids WHERE id IN ({placeholder})", deleted_items_int)
 
 	active_ids = cursor.execute("SELECT id FROM coles_active_ids").fetchall()
 	active_ids = [x[0] for x in active_ids]
@@ -547,33 +615,36 @@ async def coles_updates():
 	for i in range(0, len(active_ids), batch_size):
 		batch = active_ids[i:i+batch_size]
 		results = api_coles.get_items(batch)
-		
+		if len(results['invalid_ids']) > 0:
+			for item in results['invalid_ids']:
+				cursor.execute("DELETE FROM coles_active_ids WHERE id = ?", (item['id'],))
+				await channel.send(f"[{item_brand} {item_name}](https://coles.com.au/product/{item['id']}) was deleted from the database because its ID returned invalid.")
 		for item in results['items']:
 			item_id = item[0]
-			item_price = str(item[4])
+			item_price = item[4]
+			item_name = item[1]
+			item_brand = item[2]
 			
-			if not item_price:
-				cursor.execute("DELETE FROM coles_active_ids WHERE id = ?", (item_id,))
-				print(f"{item_id} was removed from the database as there was no price data.")
-				channel.send(f"https://coles.com.au/product/{item_id} was discontinued.")
+			if item_price is None:
+				# cursor.execute("DELETE FROM coles_active_ids WHERE id = ?", (item_id,))
+				# print(f"{item_id} was removed from the database as there was no price data.")
+				# await channel.send(f"https://coles.com.au/product/{item_id} was discontinued.")
 				continue
 
 			date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')
+			item_price = str(item_price)
 			
-			db_price_row = cursor.execute(
-				"SELECT price FROM coles_price_history WHERE id = ? ORDER BY date DESC LIMIT 1",
-				(item_id,)
-			).fetchone()[0]
+			db_price = cursor.execute("SELECT price FROM coles_price_history WHERE id = ? ORDER BY date DESC LIMIT 1",(item_id,)).fetchone()
+			if db_price is None:
+				insert_data.append((item_id, item_price, date))
+				continue
 			
-			max_price = cursor.execute("SELECT price FROM coles_price_history WHERE id = ? ORDER BY price DESC LIMIT 1", (item_id,)).fetchone()[0]
-			db_price = db_price_row if db_price_row else None
-			if db_price != item_price:
+			max_price = cursor.execute("SELECT price FROM coles_price_history WHERE id = ? ORDER BY CAST(price AS REAL) DESC LIMIT 1", (item_id,)).fetchone()[0]
+			if db_price[0] != item_price:
 				insert_data.append((item_id, item_price, date))
 				print(f"Inserted {item_id} with new price {item_price}")
-				if item_price > max_price:
-					channel.send(f"https://coles.com.au/product/{item_id} reached an all-time high.")
-			else:
-				print(f"{item_id} did not need updating")
+				if float(item_price) > float(max_price):
+					await channel.send(f"[{item_brand} {item_name}](https://coles.com.au/product/{item_id}) reached an all-time high: ${str(max_price)} -> ${str(item_price)} ({helpers.percentage_change(float(max_price), float(item_price))}).")
 
 	if insert_data:
 		cursor.executemany(
@@ -581,5 +652,4 @@ async def coles_updates():
 			insert_data
 		)
 		print(f"Inserted {len(insert_data)} new records into the price history.")
-	else:
-		print("No new price data to insert.")
+	print("Finished coles_updates task")
