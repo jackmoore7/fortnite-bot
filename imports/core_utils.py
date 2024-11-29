@@ -1,5 +1,9 @@
 import sqlite3 as sl
 import discord
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
+
+mongo_client = AsyncIOMotorClient(str(os.getenv('MONGODB_URI')))
 
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()

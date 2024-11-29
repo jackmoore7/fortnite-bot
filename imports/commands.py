@@ -8,6 +8,7 @@ from imports.helpers import nice_try, removed, added
 from imports.core_utils import cursor
 import imports.api.api_coles as api_coles
 import imports.api.api_lego as api_lego
+import imports.api.api_tfnsw as api_tfnsw
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
@@ -257,3 +258,39 @@ async def lego_list(ctx):
 		compact_info = f"**Name**: {name}\n**Price**: {price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {availability}"
 		embed.add_field(name=f"{item_id} - {name}", value=compact_info, inline=False)
 	await ctx.respond(embed=embed)
+
+async def opal_get_cards(ctx):
+	if not is_owner(ctx):
+		await ctx.respond(nice_try)
+	await ctx.defer()
+	result = api_tfnsw.get_cards()
+	await ctx.respond(result)
+
+async def opal_get_trip_history(ctx, card_id, index):
+	if not is_owner(ctx):
+		await ctx.respond(nice_try)
+	await ctx.defer()
+	result = api_tfnsw.get_trip_history(card_id)
+	balance = result['ClosingBalance']
+	journeys = result.get('SmartcardActivityDetail')
+	if journeys:
+		try:
+			journey = journeys[int(index)]
+			tapped_on = f"{journey['ActivityStartDate']} {journey['ActivityStartTime']}"
+			tapped_off = f"{journey['ActivityEndDate']} {journey['ActivityEndTime']}"
+			full_fare = journey['FullFare']
+			discount = journey['Discount']
+			actual_fare = full_fare + discount
+			off_peak = journey['OffPeakJourney']
+			await ctx.respond(f"Balance now: {balance}, Tapped on: {tapped_on}, Tapped off: {tapped_off}, Full fare: {full_fare}, Discount: {discount}, Actual fare: {actual_fare}, Off peak: {off_peak}")
+		except Exception as e:
+			await ctx.respond(e)
+	else:
+		await ctx.respond(f"Couldn't find any journeys: {result}")
+
+async def opal_top_up(ctx, card_id, cents):
+	if not is_owner(ctx):
+		await ctx.respond(nice_try)
+	await ctx.defer()
+	result = api_tfnsw.top_up(card_id, cents)
+	await ctx.respond(result)

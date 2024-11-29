@@ -45,6 +45,7 @@ async def on_ready():
 coles_group = discord_client.create_group("coles", "Edit your tracked items list")
 notifyme_group = discord_client.create_group("notifyme", "Get notified when an item you want is in the shop")
 lego_group = discord_client.create_group("lego")
+opal_group = discord_client.create_group("opal")
 
 @coles_group.command(description="[Owner] Add or remove an item")
 async def edit(ctx, item_id):
@@ -82,6 +83,17 @@ async def edit(ctx, id):
 async def list(ctx):
 	await cmd.lego_list(ctx)
 
+@opal_group.command(description="View your Opal cards")
+async def cards(ctx):
+	await cmd.opal_get_cards(ctx)
+
+@opal_group.command(description="View your travel history")
+async def history(ctx, card_id, index):
+	await cmd.opal_get_trip_history(ctx, card_id, index)
+
+@opal_group.command(description="Top up")
+async def top_up(ctx, card_id, cents):
+	await cmd.opal_top_up(ctx, card_id, cents)
 '''
 	Slash commands that are only used by the owner
 '''

@@ -18,7 +18,7 @@ async def message(message):
 			contents = []
 			initial_message = {
 				"role": "system",
-				"content": "You're a helpful and decisive lad that LOVES Fortnite and answers any questions. Even if the questions aren't fortnite-related, you manage to sneak a Fortnite reference into each answer."
+				"content": """Rules: Do not use LaTeX. Responses should not exceed 1500 characters. Role: You are a helpful assistant in a Discord conversation. Respond to the latest message while considering the context of previous messages. Address users by their display names."""
 			}
 			contents.append(initial_message)
 			if message.reference:
@@ -31,29 +31,47 @@ async def message(message):
 				if msg.embeds:
 					for embed in msg.embeds:
 						try:
-							contents.append({
-									"role": "user" if msg.author != discord_client.user else "assistant",
-									"content": [
-										{"type": "text", "text": msg.author.display_name + ": " + msg.content if msg.author != discord_client.user else msg.content},
-										{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
-									]
-								})
+							if msg.author != discord_client.user:
+								contents.append({
+										"role": "user",
+										"content": [
+											{"type": "text", "text": msg.author.display_name + ": " + msg.content},
+											{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
+										]
+									})
+							else:
+								contents.append({
+										"role": "assistant",
+										"content": [
+											{"type": "text", "text": msg.content + "[Image posted]"}
+										]
+									})
 						except Exception:
 							pass #probably no thumbnail url :/
-				elif message.attachments:
+				elif msg.attachments:
 					for attachment in msg.attachments:
 						attachment_type, _ = attachment.content_type.split('/')
 						if attachment_type == 'image':
-							contents.append({
-								"role": "user" if msg.author != discord_client.user else "assistant",
-								"content": [
-									{"type": "text", "text": msg.author.display_name + ": " + msg.content if msg.author != discord_client.user else msg.content},
-									{"type": "image_url", "image_url": {"url": attachment.url, "detail": "high"}}
-								]
-							})
+							if msg.author != discord_client.user:
+								contents.append({
+									"role": "user",
+									"content": [
+										{"type": "text", "text": msg.author.display_name + ": " + msg.content},
+										{"type": "image_url", "image_url": {"url": attachment.url, "detail": "high"}}
+									]
+								})
+							else:
+								contents.append({
+									"role": "assistant",
+									"content": [
+										{"type": "text", "text": msg.author.display_name + ": " + msg.content + "[Image posted]"},
+									]
+								})
 				else:
-					user = "user" if msg.author != discord_client.user else "assistant"
-					contents.append({"role": user, "content": msg.author.display_name + ": " + msg.content})
+					if msg.author != discord_client.user:
+						contents.append({"role": "user", "content": msg.author.display_name + ": " + msg.content})
+					else:
+						contents.append({"role": "assistant", "content": msg.content})
 			await message.reply(api_openai.openai_chat(contents), mention_author=False)	
 	for attachment in message.attachments:
 		attachment_type, _ = attachment.content_type.split('/')
@@ -109,53 +127,3 @@ async def member_update(before, after):
 	if before == discord_client.user or not after.nick:
 		return
 	
-# async def message_old(message):
-# 	if message.author == discordClient.user and message.reference:
-# 		message_author = "assistant"
-# 		print("Message is a reply from bot to user, so it should be added to the thread.")
-# 	elif message.author == discordClient.user and not message.reference:
-# 		return
-# 	else:
-# 		message_author = "user"
-# 	if message.attachments:
-# 		for attachment in message.attachments:
-# 			attachment_type, _ = attachment.content_type.split('/')
-# 			if attachment_type == 'image':
-# 				openai_api.add_to_thread(message_author, [
-# 										{"type": "text", "text": message.author.display_name + ": " + message.content if message.author != discordClient.user else message.content},
-# 										{"type": "image_url", "image_url": {"url": attachment.url, "detail": "high"}}
-# 									])
-# 			if attachment_type == 'video':
-# 				if attachment.size > 52428800:
-# 					await message.add_reaction("❌")
-# 					return
-# 				channel = discordClient.get_channel(int(os.getenv('CLIPS_CHANNEL')))
-# 				button = Button(label="Jump", style=discord.ButtonStyle.link, url=message.jump_url)
-# 				view = View()
-# 				view.add_item(button)
-# 				await channel.send(attachment.url, view=view)
-# 				await message.add_reaction("✅")
-# 	elif message.embeds:
-# 		for embed in message.embeds:
-# 			try:
-# 				openai_api.add_to_thread(message_author, [
-# 											{"type": "text", "text": message.author.display_name + ": " + message.content if message.author != discordClient.user else message.content},
-# 											{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
-# 										])
-# 			except Exception:
-# 				try:
-# 					openai_api.add_to_thread(message_author, message.content)
-# 				except Exception:
-# 					pass #no message content
-# 	else:
-# 		openai_api.add_to_thread(message_author, message.content)
-# 	if discordClient.user in message.mentions or str(message.channel.type) == 'private':
-# 		async with message.channel.typing():
-# 			await message.reply(openai_api.create_run())
-# 	if 'heh' in message.content.lower():
-# 		emoji = discordClient.get_emoji(int(os.getenv('HEH_EMOJI')))
-# 		await message.add_reaction(emoji)
-# 	if 'perhaps' in message.content.lower():
-# 		await message.add_reaction("🦀")
-# 	if '@everyone' in message.content.lower() and not message.channel.permissions_for(message.author).mention_everyone:
-# 		await message.channel.send(file=discord.File("assets/everyone.gif"))

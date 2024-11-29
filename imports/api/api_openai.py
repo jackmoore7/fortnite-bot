@@ -27,7 +27,7 @@ def upload_image_to_s3(image_data, bucket_name, object_key):
 def openai_chat(messages):
 	try:
 		completion = client.chat.completions.create(
-		model="gpt-4o",
+		model="gpt-4o-mini",
 		messages=messages
 		)
 		return completion.choices[0].message.content

@@ -7,7 +7,7 @@ from datetime import datetime as dt
 def get_arpansa_data():
     current_date = dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d')
     url = os.getenv('ARPANSA_URL')
-    r = requests.get(f"{url}&date={current_date}")
+    r = requests.get(f"{url}&date={current_date}", verify=False)
     return r.json()
 
 def calculate_hex(num):
