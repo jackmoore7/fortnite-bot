@@ -2,8 +2,12 @@ import sqlite3 as sl
 import discord
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
 
-mongo_client = AsyncIOMotorClient(str(os.getenv('MONGODB_URI')))
+load_dotenv() # apparently I need to load dotenv here as well even though it's already loaded in main. how interesting!
+
+mongo_client = AsyncIOMotorClient(os.getenv('MONGODB_URI'))
+print("mongo client: " + str(mongo_client))
 
 con = sl.connect('fortnite.db', isolation_level=None)
 cursor = con.cursor()
