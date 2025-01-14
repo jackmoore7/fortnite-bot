@@ -16,11 +16,17 @@ async def message(message):
 	if discord_client.user in message.mentions or str(message.channel.type) == 'private':
 		async with message.channel.typing():
 			contents = []
-			initial_message = {
-				"role": "system",
-				"content": """Rules: Do not use LaTeX. Responses should not exceed 1500 characters. Role: You are a helpful assistant in a Discord conversation. Respond to the latest message while considering the context of previous messages. Address users by their display names."""
+			user_info = {
+				"name": message.author.display_name,
+				"roles": [role.name for role in message.author.roles],
+				"joined_at": message.author.joined_at.strftime("%Y-%m-%d") if message.author.joined_at else "Unknown",
 			}
-			contents.append(initial_message)
+			channel_info = {
+				"name": message.channel.name if hasattr(message.channel, 'name') else "DM",
+				"type": str(message.channel.type),
+				"topic": message.channel.topic if hasattr(message.channel, 'topic') and message.channel.topic else "",
+			}
+			contents.append({"role": "system", "content": ""})
 			if message.reference:
 				referenced = await message.channel.fetch_message(message.reference.message_id)
 				messages = [message, referenced]
@@ -28,51 +34,40 @@ async def message(message):
 				messages = await message.channel.history(limit=10).flatten()
 			messages.reverse()
 			for msg in messages:
+				content = [{"type": "text", "text": msg.content}]
 				if msg.embeds:
 					for embed in msg.embeds:
-						try:
-							if msg.author != discord_client.user:
-								contents.append({
-										"role": "user",
-										"content": [
-											{"type": "text", "text": msg.author.display_name + ": " + msg.content},
-											{"type": "image_url", "image_url": {"url": embed.thumbnail.url, "detail": "high"}}
-										]
-									})
-							else:
-								contents.append({
-										"role": "assistant",
-										"content": [
-											{"type": "text", "text": msg.content + "[Image posted]"}
-										]
-									})
-						except Exception:
-							pass #probably no thumbnail url :/
-				elif msg.attachments:
+						if embed.thumbnail and embed.thumbnail.url:
+							content.append({
+								"type": "image_url",
+								"image_url": {"url": embed.thumbnail.url}
+							})
+				if msg.attachments:
 					for attachment in msg.attachments:
-						attachment_type, _ = attachment.content_type.split('/')
-						if attachment_type == 'image':
-							if msg.author != discord_client.user:
-								contents.append({
-									"role": "user",
-									"content": [
-										{"type": "text", "text": msg.author.display_name + ": " + msg.content},
-										{"type": "image_url", "image_url": {"url": attachment.url, "detail": "high"}}
-									]
-								})
-							else:
-								contents.append({
-									"role": "assistant",
-									"content": [
-										{"type": "text", "text": msg.author.display_name + ": " + msg.content + "[Image posted]"},
-									]
-								})
-				else:
-					if msg.author != discord_client.user:
-						contents.append({"role": "user", "content": msg.author.display_name + ": " + msg.content})
-					else:
-						contents.append({"role": "assistant", "content": msg.content})
-			await message.reply(api_openai.openai_chat(contents), mention_author=False)	
+						if attachment.content_type and attachment.content_type.startswith('image/'):
+							content.append({
+								"type": "image_url",
+								"image_url": {"url": attachment.url}
+							})
+				contents.append({
+					"role": "user" if msg.author != discord_client.user else "assistant",
+					"name": msg.author.display_name,
+					"content": content if len(content) > 1 else msg.content
+				})
+			response = api_openai.openai_chat(contents, user_info, channel_info)
+			
+			try:
+				cursor.execute(
+					"CREATE TABLE IF NOT EXISTS chat_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, channel_id TEXT, message TEXT, response TEXT, timestamp DATETIME)"
+				)
+				cursor.execute(
+					"INSERT INTO chat_history (user_id, channel_id, message, response, timestamp) VALUES (?, ?, ?, ?, datetime('now'))",
+					(str(message.author.id), str(message.channel.id), message.content, response)
+				)
+			except Exception as e:
+				print(f"Failed to store chat history: {e}")
+				
+			await message.reply(response, mention_author=False)
 	for attachment in message.attachments:
 		attachment_type, _ = attachment.content_type.split('/')
 		if attachment_type == 'video':
@@ -126,4 +121,3 @@ async def member_remove(member):
 async def member_update(before, after):
 	if before == discord_client.user or not after.nick:
 		return
-	

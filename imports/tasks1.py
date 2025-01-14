@@ -15,6 +15,8 @@ from discord.ext import tasks
 from PIL import Image
 from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
+import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
 
 from imports.core_utils import discord_client, cursor, tasks_list, mongo_client
 from imports.api import api_openai
@@ -24,7 +26,6 @@ import imports.api.api_epic as api_epic
 import imports.api.api_coles as api_coles
 import imports.api.api_lego as api_lego
 import imports.uv as uv
-import imports.ephemeral_port as ephemeral_port
 import imports.api.api_seveneleven as api_seveneleven
 
 mongo_db = mongo_client['coles']
@@ -33,7 +34,7 @@ coles_updates_collection = mongo_db['coles_updates']
 start_time = time(20, 1, 0)
 end_time = time(7, 0, 0)
 time_list = [time(hour, minute) for hour in range(start_time.hour, 24) for minute in range(0, 60, 1)] + [time(hour, minute) for hour in range(end_time.hour + 1) for minute in range(0, 60, 1)]
-coles_time = [time(20, 0)]
+coles_time = [time(19, 0)]
 
 async def tasks_on_ready():
 	await discord_client.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="me booty arrrr"))
@@ -55,8 +56,6 @@ async def tasks_on_ready():
 		gog_free_games.start()
 	if not lego_bg.is_running():
 		lego_bg.start()
-	if not transmission_port_forwarding.is_running():
-		transmission_port_forwarding.start()
 	if not fuel_check.is_running():
 		fuel_check.start()
 	if not fortnite_shop_update_v3.is_running():
@@ -71,9 +70,85 @@ async def tasks_on_ready():
 	tasks_list['free_games'] = epic_free_games
 	tasks_list['ozb_bangers'] = ozb_bangers
 	tasks_list['lego'] = lego_bg
-	tasks_list['transmission'] = transmission_port_forwarding
 	tasks_list['shop'] = fortnite_shop_update_v3
 	print(f"{discord_client.user} is online! My PID is {os.getpid()}.")
+
+@tasks.loop(time=time_list)
+async def arpansa():
+	try:
+		ch = discord_client.get_channel(int(os.getenv('UV_CHANNEL')))
+		role = os.getenv('SUNSCREEN_ROLE')
+		current_date = dt.now(helpers.timezone).strftime('%Y-%m-%d')
+		current_time = (dt.now(helpers.timezone)-timedelta(minutes=1)).strftime('%H:%M')
+		db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
+		data = uv.get_arpansa_data()
+		current_uv = float(data['CurrentUVIndex'])
+		max_uv_today_recorded = float(data['MaximumUVLevel'])
+		max_uv_today_recorded_time = data['MaximumUVLevelDateTime'][-5:]
+		r = data['GraphData']
+		forecast_graph = [entry["Forecast"] for entry in data["GraphData"]]
+		measured_graph = [entry["Measured"] for entry in data["GraphData"]]
+		dates_graph = [dt.strptime(entry["Date"], "%Y-%m-%d %H:%M") for entry in data["GraphData"]]
+		plt.figure(figsize=(12, 6))
+		plt.fill_between(dates_graph, 0, 3, color="green", alpha=0.3, label="Low")
+		plt.fill_between(dates_graph, 3, 6, color="yellow", alpha=0.3, label="Moderate")
+		plt.fill_between(dates_graph, 6, 8, color="orange", alpha=0.3, label="High")
+		plt.fill_between(dates_graph, 8, 11, color="red", alpha=0.3, label="Very High")
+		plt.fill_between(dates_graph, 11, 16, color="purple", alpha=0.3, label="Extreme")
+		plt.plot(dates_graph, forecast_graph, label="Forecast", linestyle="--", color="blue")
+		plt.plot(dates_graph, measured_graph, label="Measured", color="orange")
+		plt.xlim(dates_graph[0], dates_graph[-1])
+		plt.ylim(0, 16)
+		plt.xticks(rotation=0)
+		plt.gca().xaxis.set_major_formatter(DateFormatter("%H:%M"))
+		plt.yticks(range(0, 17))
+		plt.grid(True, linestyle="--", alpha=0.5)
+		plt.legend()
+		plt.tight_layout()
+		plt.savefig("uv_index_plot.png")
+		plt.close()
+
+		if db_date != current_date:
+			print("It's a new day!")
+			first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
+			max_uv_today_forecast = max(r, key=lambda item: item['Forecast'])['Forecast']
+			max_uv_today_forecast_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
+			embed = discord.Embed(color=0xa3c80a)
+			if first_forecast_gte_3_item:
+				first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
+				embed.title = "Sun protection required today"
+				# await ch.send(f"<@&{role}>")
+				embed.add_field(name="Time", value=f"{first_forecast_gte_3_item['Date'][-5:]} - {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
+				cursor.execute("UPDATE uv_times SET safe = 0")
+			else:
+				embed.title = "No sun protection required today"
+				cursor.execute("UPDATE uv_times SET safe = 1")
+			embed.add_field(name="Maximum UV (Forecast)", value=f"{uv.calculate_emoji(max_uv_today_forecast)} {max_uv_today_forecast} at {max_uv_today_forecast_time}", inline=False)
+			embed.add_field(name="Maximum UV (Recorded)", value=f"{uv.calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
+			embed.add_field(name="Current UV", value=f"{uv.calculate_emoji(current_uv)} {current_uv} at {current_time}", inline=False)
+			msg = await ch.send(embed=embed)
+			cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
+			cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
+
+		msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
+		emb = msg.embeds[0]
+		emb.set_field_at(-1, name="Current UV", value=f"{uv.calculate_emoji(current_uv)} {current_uv} at {current_time}")
+		emb.set_field_at(-2, name="Maximum UV (Recorded)", value=f"{uv.calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
+		emb.color = discord.Color(uv.calculate_hex(current_uv))
+		file = discord.File("uv_index_plot.png", filename="uv_index_plot.png")
+		emb.set_image(url="attachment://uv_index_plot.png")
+		await msg.edit(embed=emb, file=file)
+
+		await ch.edit(name=f"{uv.calculate_emoji(current_uv)} uv")
+
+		safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
+		if safe and current_uv >= 3:
+			await ch.send(f"<@&{role}> Earlier forecast was incorrect - UV index is now above safe levels. slip slop slap bitch")
+			cursor.execute("UPDATE uv_times SET safe = 0")
+	except Exception as e:
+		print(f"ARPANSA task encountered an exception: {e}")
+		await asyncio.sleep(60)
+		arpansa.restart()
 
 @tasks.loop(minutes=5)
 async def fortnite_update_bg():
@@ -415,60 +490,6 @@ async def tv_show_update_bg():
 		print("Something went wrong getting the TV show RSS: " + str(repr(e)) + "\nRestarting internal task in 1 minute.")
 		await asyncio.sleep(60)
 		tv_show_update_bg.restart()
-		
-@tasks.loop(time=time_list)
-async def arpansa():
-	try:
-		ch = discord_client.get_channel(int(os.getenv('UV_CHANNEL')))
-		role = os.getenv('SUNSCREEN_ROLE')
-		current_date = dt.now(helpers.timezone).strftime('%Y-%m-%d')
-		current_time = (dt.now(helpers.timezone)-timedelta(minutes=1)).strftime('%H:%M')
-		db_date = cursor.execute("SELECT start FROM uv_times").fetchone()[0]
-		data = uv.get_arpansa_data()
-		current_uv = float(data['CurrentUVIndex'])
-		max_uv_today_recorded = float(data['MaximumUVLevel'])
-		max_uv_today_recorded_time = data['MaximumUVLevelDateTime'][-5:]
-		r = data['GraphData']
-
-		if db_date != current_date:
-			print("It's a new day!")
-			first_forecast_gte_3_item = next((item for item in r if item['Forecast'] >= 3), None)
-			max_uv_today_forecast = max(r, key=lambda item: item['Forecast'])['Forecast']
-			max_uv_today_forecast_time = max(r, key=lambda item: item['Forecast'])['Date'][-5:]
-			embed = discord.Embed(color=0xa3c80a)
-			if first_forecast_gte_3_item:
-				first_forecast_lt_3_item = next((item for item in r[r.index(first_forecast_gte_3_item) + 1:] if item['Forecast'] < 3), None)
-				embed.title = "Sun protection required today"
-				# await ch.send(f"<@&{role}>")
-				embed.add_field(name="Time", value=f"{first_forecast_gte_3_item['Date'][-5:]} - {first_forecast_lt_3_item['Date'][-5:]}", inline=False)
-				cursor.execute("UPDATE uv_times SET safe = 0")
-			else:
-				embed.title = "No sun protection required today"
-				cursor.execute("UPDATE uv_times SET safe = 1")
-			embed.add_field(name="Maximum UV (Forecast)", value=f"{uv.calculate_emoji(max_uv_today_forecast)} {max_uv_today_forecast} at {max_uv_today_forecast_time}", inline=False)
-			embed.add_field(name="Maximum UV (Recorded)", value=f"{uv.calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
-			embed.add_field(name="Current UV", value=f"{uv.calculate_emoji(current_uv)} {current_uv} at {current_time}", inline=False)
-			msg = await ch.send(embed=embed)
-			cursor.execute("UPDATE uv_times SET end = ?", (msg.id,))
-			cursor.execute("UPDATE uv_times SET start = ?", (current_date,))
-
-		msg = await ch.fetch_message(int(cursor.execute("SELECT end FROM uv_times").fetchone()[0]))
-		emb = msg.embeds[0]
-		emb.set_field_at(-1, name="Current UV", value=f"{uv.calculate_emoji(current_uv)} {current_uv} at {current_time}")
-		emb.set_field_at(-2, name="Maximum UV (Recorded)", value=f"{uv.calculate_emoji(max_uv_today_recorded)} {max_uv_today_recorded} at {max_uv_today_recorded_time}", inline=False)
-		emb.color = discord.Color(uv.calculate_hex(current_uv))
-		await msg.edit(embed=emb)
-
-		await ch.edit(name=f"{uv.calculate_emoji(current_uv)} uv")
-
-		safe = bool(cursor.execute("SELECT safe FROM uv_times").fetchone()[0])
-		if safe and current_uv >= 3:
-			await ch.send(f"<@&{role}> Earlier forecast was incorrect - UV index is now above safe levels. slip slop slap bitch")
-			cursor.execute("UPDATE uv_times SET safe = 0")
-	except Exception as e:
-		print(f"ARPANSA task encountered an exception: {e}")
-		await asyncio.sleep(60)
-		arpansa.restart()
 
 @tasks.loop(minutes=10)
 async def ozb_bangers():
@@ -478,6 +499,7 @@ async def ozb_bangers():
 		for post in feed['entries']:
 			upvotes = int(post['ozb_meta']['votes-pos'])
 			downvotes = int(post['ozb_meta']['votes-neg'])
+			clicks = int(post['ozb_meta']['click-count'])
 			try:
 				prefix = f"[{post['ozb_title-msg']['type'].upper()}]"
 			except Exception:
@@ -494,8 +516,12 @@ async def ozb_bangers():
 				ch = discord_client.get_channel(int(os.getenv('OZB_BANGERS_CHANNEL')))
 				embed = discord.Embed()
 				embed.title = f"{prefix} {title}"
-				embed.description = f"{upvote_emoji} {upvotes}\n{downvote_emoji} {downvotes}"
-				embed.set_image(url=post['ozb_meta']['image'])
+				embed.description = f"{upvote_emoji} >={upvotes}\n{downvote_emoji} {downvotes}\nClicks: {clicks}"
+				try:
+					if post['ozb_meta']['image']:
+						embed.set_image(url=post['ozb_meta']['image'])
+				except:
+					print("No image associated with this banger.")
 				embed.add_field(name="Link", value=link, inline=False)
 				embed.add_field(name="Expires", value=expiry, inline=False)
 				await ch.send(embed=embed)
@@ -504,16 +530,6 @@ async def ozb_bangers():
 		print(f"ozb_bangers encountered an exception: {e}")
 		await asyncio.sleep(60)
 		ozb_bangers.restart()
-
-@tasks.loop(minutes=5)
-async def transmission_port_forwarding():
-	try:
-		channel = discord_client.get_channel(int(os.getenv('TRANSMISSION_CHANNEL')))
-		response = ephemeral_port.test_port()
-		if response:
-			await channel.send(response)
-	except Exception as e:
-		await channel.send(f"transmission_port_forwarding encountered an exception: {e}")
 
 @tasks.loop(minutes=5)
 async def fuel_check():
