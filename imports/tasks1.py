@@ -167,6 +167,33 @@ async def fortnite_update_bg():
 		fortnite_update_bg.restart()
 
 @tasks.loop(minutes=5)
+async def check_scheduled_maintenance():
+    try:
+        channel = discord_client.get_channel(int(os.getenv('UPD8_CHANNEL')))
+        maintenances = api_epic.get_fortnite_maintenance()
+        if not maintenances:
+            return
+        for maintenance in maintenances:
+            maintenance_id = maintenance["id"]
+            if cursor.execute("SELECT 1 FROM scheduled_maintenance WHERE id = ?", (maintenance_id,)).fetchone():
+                continue
+            utc_start = dt.fromisoformat(maintenance["scheduled_for"]).replace(tzinfo=pytz.utc)
+            utc_end = dt.fromisoformat(maintenance["scheduled_until"]).replace(tzinfo=pytz.utc)
+            sydney_start = int(utc_start.astimezone(pytz.timezone("Australia/Sydney")).timestamp())
+            sydney_end = int(utc_end.astimezone(pytz.timezone("Australia/Sydney")).timestamp())
+            start_time = f"<t:{sydney_start}:R>"
+            end_time = f"<t:{sydney_end}:R>"
+            embed = discord.Embed(title="Scheduled maintenance", description=maintenance["name"])
+            embed.add_field(name="Starts", value=start_time, inline=False)
+            embed.add_field(name="Ends (Sydney Time)", value=end_time, inline=False)
+            await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
+            cursor.execute("INSERT INTO scheduled_maintenance (id) VALUES (?)", (maintenance_id,))
+    except Exception as e:
+        print(f"Error checking maintenance: {repr(e)}\nRestarting task in 3 minutes.")
+        await asyncio.sleep(180)
+        check_scheduled_maintenance.restart()
+
+@tasks.loop(minutes=5)
 async def fortnite_status_bg():
 	try:
 		channel = discord_client.get_channel(int(os.getenv('UPD8_CHANNEL')))
