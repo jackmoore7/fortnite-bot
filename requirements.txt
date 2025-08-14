@@ -8,7 +8,7 @@ protobuf==4.21.7
 python-dotenv==1.0.1
 pytz==2022.6
 PyVirtualDisplay==3.0
-Requests==2.32.3
+Requests==2.32.4
 selenium==4.11.2
 systemd==0.17.1
 transmission_rpc==7.0.10
