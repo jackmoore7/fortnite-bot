@@ -140,7 +140,7 @@ def get_free_games():
 
 def get_fortnite_maintenance():
     try:
-        url = "https://status.epicgames.com/api/v2/scheduled-maintenances.json"
+        url = "https://status.epicgames.com/api/v2/scheduled-maintenances/upcoming.json"
         response = requests.get(url).json()
         return response.get("scheduled_maintenances", [])
     except Exception as e:

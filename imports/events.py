@@ -8,65 +8,16 @@ import imports.api.api_openai as api_openai
 async def message(message):
 	if message.author == discord_client.user:
 		return
+	if message.channel.id == int(os.getenv('CRINGE_ZONE')):
+		api_openai.add_to_thread(message)
 	if helpers.embed_tweets(message):
 		webhook = (await message.channel.webhooks())[0]
 		await webhook.send(content=helpers.embed_tweets(message), username=message.author.name, avatar_url=message.author.avatar)
 		await message.delete()
 		return
-	if discord_client.user in message.mentions or str(message.channel.type) == 'private':
+	if discord_client.user in message.mentions and str(message.channel.type) != 'private':
 		async with message.channel.typing():
-			contents = []
-			user_info = {
-				"name": message.author.display_name,
-				"roles": [role.name for role in message.author.roles],
-				"joined_at": message.author.joined_at.strftime("%Y-%m-%d") if message.author.joined_at else "Unknown",
-			}
-			channel_info = {
-				"name": message.channel.name if hasattr(message.channel, 'name') else "DM",
-				"type": str(message.channel.type),
-				"topic": message.channel.topic if hasattr(message.channel, 'topic') and message.channel.topic else "",
-			}
-			contents.append({"role": "system", "content": ""})
-			if message.reference:
-				referenced = await message.channel.fetch_message(message.reference.message_id)
-				messages = [message, referenced]
-			else:
-				messages = await message.channel.history(limit=10).flatten()
-			messages.reverse()
-			for msg in messages:
-				content = [{"type": "text", "text": msg.content}]
-				if msg.embeds:
-					for embed in msg.embeds:
-						if embed.thumbnail and embed.thumbnail.url:
-							content.append({
-								"type": "image_url",
-								"image_url": {"url": embed.thumbnail.url}
-							})
-				if msg.attachments:
-					for attachment in msg.attachments:
-						if attachment.content_type and attachment.content_type.startswith('image/'):
-							content.append({
-								"type": "image_url",
-								"image_url": {"url": attachment.url}
-							})
-				contents.append({
-					"role": "user" if msg.author != discord_client.user else "assistant",
-					"name": msg.author.display_name,
-					"content": content if len(content) > 1 else msg.content
-				})
-			response = api_openai.openai_chat(contents, user_info, channel_info)
-			
-			try:
-				cursor.execute(
-					"CREATE TABLE IF NOT EXISTS chat_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, channel_id TEXT, message TEXT, response TEXT, timestamp DATETIME)"
-				)
-				cursor.execute(
-					"INSERT INTO chat_history (user_id, channel_id, message, response, timestamp) VALUES (?, ?, ?, ?, datetime('now'))",
-					(str(message.author.id), str(message.channel.id), message.content, response)
-				)
-			except Exception as e:
-				print(f"Failed to store chat history: {e}")
-				
+			response = api_openai.create_run()
 			await message.reply(response, mention_author=False)
 	for attachment in message.attachments:
 		attachment_type, _ = attachment.content_type.split('/')
@@ -99,6 +50,10 @@ async def voice_state_update(member, before, after):
 async def reaction(reaction, user):
 	if user == discord_client.user:
 		return
+	try:
+		api_openai.add_reaction(reaction, user)
+	except Exception as e:
+		print("Failed to record reaction in thread buffer:", e)
 	if reaction.emoji == "👀" and user != discord_client.user:
 		users = await reaction.users().flatten()
 		if discord_client.user in users:

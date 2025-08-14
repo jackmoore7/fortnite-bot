@@ -16,6 +16,8 @@ from PIL import Image
 from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+from icalendar import Calendar
+from dateutil.rrule import rrulestr
 from matplotlib.dates import DateFormatter
 
 from imports.core_utils import discord_client, cursor, tasks_list, mongo_client
@@ -62,6 +64,10 @@ async def tasks_on_ready():
 		fortnite_shop_update_v3.start()
 	if not coles_updates.is_running():
 		coles_updates.start()
+	if not check_scheduled_maintenance.is_running():
+		check_scheduled_maintenance.start()
+	if not tv_updates.is_running():
+		tv_updates.start()
 	tasks_list["update"] = fortnite_update_bg
 	tasks_list["tv"] = tv_show_update_bg
 	tasks_list["status"] = fortnite_status_bg
@@ -71,6 +77,7 @@ async def tasks_on_ready():
 	tasks_list['ozb_bangers'] = ozb_bangers
 	tasks_list['lego'] = lego_bg
 	tasks_list['shop'] = fortnite_shop_update_v3
+	tasks_list['tv_updates'] = tv_updates
 	print(f"{discord_client.user} is online! My PID is {os.getpid()}.")
 
 @tasks.loop(time=time_list)
@@ -166,7 +173,7 @@ async def fortnite_update_bg():
 		await asyncio.sleep(60)
 		fortnite_update_bg.restart()
 
-@tasks.loop(minutes=5)
+@tasks.loop(minutes=180)
 async def check_scheduled_maintenance():
     try:
         channel = discord_client.get_channel(int(os.getenv('UPD8_CHANNEL')))
@@ -177,15 +184,15 @@ async def check_scheduled_maintenance():
             maintenance_id = maintenance["id"]
             if cursor.execute("SELECT 1 FROM scheduled_maintenance WHERE id = ?", (maintenance_id,)).fetchone():
                 continue
-            utc_start = dt.fromisoformat(maintenance["scheduled_for"]).replace(tzinfo=pytz.utc)
-            utc_end = dt.fromisoformat(maintenance["scheduled_until"]).replace(tzinfo=pytz.utc)
+            utc_start = dt.strptime(maintenance["scheduled_for"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=pytz.utc)
+            utc_end = dt.strptime(maintenance["scheduled_until"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=pytz.utc)
             sydney_start = int(utc_start.astimezone(pytz.timezone("Australia/Sydney")).timestamp())
             sydney_end = int(utc_end.astimezone(pytz.timezone("Australia/Sydney")).timestamp())
             start_time = f"<t:{sydney_start}:R>"
             end_time = f"<t:{sydney_end}:R>"
             embed = discord.Embed(title="Scheduled maintenance", description=maintenance["name"])
             embed.add_field(name="Starts", value=start_time, inline=False)
-            embed.add_field(name="Ends (Sydney Time)", value=end_time, inline=False)
+            embed.add_field(name="Ends", value=end_time, inline=False)
             await channel.send("<@&" + os.getenv('UPD8_ROLE') + ">", embed=embed)
             cursor.execute("INSERT INTO scheduled_maintenance (id) VALUES (?)", (maintenance_id,))
     except Exception as e:
@@ -366,7 +373,7 @@ async def coles_specials_bg():
 				if item2[7]:
 					field_value = f"{item2[7]} - reduces the price per unit to ${item2[8]}" if item2[8] else f"{item2[7]}"
 					embed.add_field(name='Promotion details', value=field_value, inline=False)
-				embed.add_field(name='Recommendation', value=api_openai.coles_recommendation(item2[0], item2[4], dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')), inline=False)
+				# embed.add_field(name='Recommendation', value=api_openai.coles_recommendation(item2[0], item2[4], dt.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')), inline=False)
 				await channel.send(embed=embed)
 	except Exception as e:
 		await channel.send("Something went wrong getting item details from Coles: " + str(repr(e)) + "\nRestarting internal task in 3 hours")
@@ -574,6 +581,53 @@ async def fuel_check():
 		print(f"fuel loop encountered an exception: {e}")
 
 @tasks.loop(time=coles_time)
+async def tv_updates():
+	try:
+		today = dt.now().weekday()
+		if today != 0: # 0 = monday
+			return
+		ch = discord_client.get_channel(int(os.getenv('PLEX_CHANNEL')))
+		ics_url = str(os.getenv('ICS_URL'))
+
+		now = dt.now(helpers.timezone)
+		monday = now - timedelta(days=now.weekday())
+		sunday = monday + timedelta(days=6)
+
+		response = requests.get(ics_url)
+		cal = Calendar.from_ical(response.content)
+
+		events = []
+		for component in cal.walk():
+			if component.name == 'VEVENT':
+				start = component.get('dtstart').dt
+				end = component.get('dtend').dt
+				summary = str(component.get('summary'))
+				description = str(component.get('description', ''))
+
+				start = start.astimezone(helpers.timezone)
+				end = end.astimezone(helpers.timezone)
+
+				if start.date() >= monday.date() and start.date() <= sunday.date():
+					events.append((start, end, summary, description))
+
+		if events:
+			embed = discord.Embed(title=f"TV Airing This Week ({monday.strftime('%b %d')} - {sunday.strftime('%b %d')})",
+								  color=0x00ff00)
+			for event in sorted(events, key=lambda x: x[0]):
+				start_str = event[0].strftime('%a %b %d %I:%M %p')
+				end_str = event[1].strftime('%I:%M %p')
+				embed.add_field(
+					name=f"{event[2]}",
+					value=f"{start_str} - {end_str}\n{event[3]}",
+					inline=False
+				)
+			await ch.send(embed=embed)
+	except Exception as e:
+		print(f"tv_updates task failed: {e}")
+		await asyncio.sleep(3600)
+		tv_updates.restart()
+
+@tasks.loop(time=coles_time)
 async def coles_updates():
 	print("Started coles_updates task")
 	api_coles.try_bad_boys()
@@ -614,11 +668,11 @@ async def coles_updates():
 		return files_list
 
 
-	sitemap_urls = get_product_sitemap_urls()
+	# sitemap_urls = get_product_sitemap_urls()
 
-	files = get_products_from_urls(sitemap_urls)
+	# files = get_products_from_urls(sitemap_urls)
 
-	# files = ['output0.xml', 'output1.xml']
+	files = ['output0.xml', 'output1.xml']
 
 	products = []
 
