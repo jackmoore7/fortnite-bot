@@ -1,4 +1,4 @@
-aiohttp==3.13.3
+aiohttp==3.13.4
 beautifulsoup4==4.9.3
 boto3==1.34.49
 feedparser==6.0.10
