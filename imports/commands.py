@@ -15,8 +15,10 @@ from imports.api import api_openai
 from imports.core_utils import cursor
 from imports.helpers import added, nice_try, removed
 
+
 def get_date():
-	return datetime.now(pytz.timezone("Australia/Sydney")).strftime("%Y-%m-%d %H:%M:%S")
+	return datetime.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')
+
 
 def enqueue_coles_ai_update(item_id, current_price, tracked_by):
 	def worker():
@@ -31,32 +33,28 @@ def enqueue_coles_ai_update(item_id, current_price, tracked_by):
 
 	threading.Thread(target=worker, daemon=True).start()
 
+
 def is_owner(ctx):
-	return ctx.user.id == int(os.getenv("ME")) or ctx.user.id == int(os.getenv("SKYE"))
+	return ctx.user.id == int(os.getenv('ME')) or ctx.user.id == int(os.getenv('SKYE'))
 
-"""
+'''
 	Owner only commands
-"""
-
-def get_coles_fields(item):
-	item_id = item[0]
-	name = item[1]
-	brand = item[2]
-	description = item[3]
-	current_price = item[4]
-	on_sale = item[5]
-	available = item[6]
-	ai_status = item[7]
-	ai_recommendation = item[8]
-	ai_logic = item[9]
-	return (item_id, name, brand, description, current_price, on_sale, available, ai_status, ai_recommendation, ai_logic)
+'''
 
 def coles_edit_2(item_id, ctx):
 	result = api_coles.get_items([item_id])
-	result = result["items"][0]
+	result = result['items'][0]
 	if result:
-		item_id, name, brand, description, current_price, on_sale, available, _, _, _ = get_coles_fields(result)
-
+		item_id = result[0]
+		name = result[1]
+		brand = result[2]
+		description = result[3]
+		current_price = result[4]
+		on_sale = result[5]
+		available = result[6]
+		ai_status = result[7]
+		ai_recommendation = result[8]
+		ai_logic = result[9]
 		result_db = api_coles.cursor.execute("SELECT * FROM coles_specials WHERE id = ? AND tracked_by = ?", (item_id, ctx.author.id)).fetchone()
 		if result_db:
 			api_coles.cursor.execute("DELETE FROM coles_specials WHERE id = ? AND tracked_by = ?", (item_id, ctx.author.id))
@@ -78,10 +76,18 @@ async def coles_edit(ctx, item_id):
 	else:
 		await ctx.defer()
 		result = api_coles.get_items([item_id])
-		result = result["items"][0]
+		result = result['items'][0]
 		if result:
-			item_id, name, brand, description, current_price, on_sale, available, _, _, _ = get_coles_fields(result)
-
+			item_id = result[0]
+			name = result[1]
+			brand = result[2]
+			description = result[3]
+			current_price = result[4]
+			on_sale = result[5]
+			available = result[6]
+			ai_status = result[7]
+			ai_recommendation = result[8]
+			ai_logic = result[9]
 			result_db = api_coles.cursor.execute("SELECT * FROM coles_specials WHERE id = ? AND tracked_by = ?", (item_id, ctx.author.id)).fetchone()
 			if result_db:
 				api_coles.cursor.execute("DELETE FROM coles_specials WHERE id = ? AND tracked_by = ?", (item_id, ctx.author.id))
@@ -121,7 +127,7 @@ async def coles_list(ctx):
 					ai_status = item[7]
 					ai_recommendation = item[8]
 					ai_logic = item[9]
-					compact_info = f"**Brand**: {brand}\n**Price**: ${current_price}\n**On special**: {"Yes" if on_sale else "No"}\n**Availability**: {"Available" if available else "Unavailable"}\n**Status**: {ai_status}\n**Recommendation**: {ai_recommendation}\n**Logic**: {ai_logic}"
+					compact_info = f"**Brand**: {brand}\n**Price**: ${current_price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {'Available' if available else 'Unavailable'}\n**Status**: {ai_status}\n**Recommendation**: {ai_recommendation}\n**Logic**: {ai_logic}"
 					embed.add_field(name=f"{item_id} - {name}", value=compact_info, inline=False)
 				pages.append(Page(embeds=[embed]))
 			paginator = Paginator(pages=pages)
@@ -130,76 +136,76 @@ async def coles_list(ctx):
 			await ctx.respond(f"Couldn't get list: {e}")
 
 async def shopping_list(ctx, mode="default"):
-	if mode == "floor_only":
-		query = """
-			SELECT brand, name, current_price, ai_status
-			FROM coles_specials 
-			WHERE tracked_by = ?
-			AND available = 1 
-			AND ai_status = 'Floor'
-		"""
-	else:
-		query = """
-			SELECT brand, name, current_price, ai_status
-			FROM coles_specials 
-			WHERE tracked_by = ?
-			AND available = 1 
-			AND ai_status != 'Peak'
-			AND (ai_recommendation = 'Buy Now' OR ai_status = 'Mid-Range' OR ai_status = 'Stagnant')
-		"""
-	items = cursor.execute(query, (ctx.author.id,)).fetchall()
+    if mode == "floor_only":
+        query = """
+            SELECT brand, name, current_price, ai_status
+            FROM coles_specials 
+            WHERE tracked_by = ?
+            AND available = 1 
+            AND ai_status = 'Floor'
+        """
+    else:
+        query = """
+            SELECT brand, name, current_price, ai_status
+            FROM coles_specials 
+            WHERE tracked_by = ?
+            AND available = 1 
+            AND ai_status != 'Peak'
+            AND (ai_recommendation = 'Buy Now' OR ai_status = 'Mid-Range' OR ai_status = 'Stagnant')
+        """
+    items = cursor.execute(query, (ctx.author.id,)).fetchall()
 
-	if not items:
-		return await ctx.respond("Nothing worth buying at the moment.", ephemeral=True)
+    if not items:
+        return await ctx.respond("Nothing worth buying at the moment.", ephemeral=True)
 
-	items_per_page = 8
-	pages = []
-	for i in range(0, len(items), items_per_page):
-		chunk = items[i:i+items_per_page]
-		embed = discord.Embed(title="Shopping List", color=0x18a558)
-		for item in chunk:
-			embed.add_field(
-				name=f"{item[0]} {item[1]} - ${item[2]:.2f}",
-				value=f"**Status**: {item[3]}",
-				inline=False
-			)
-		pages.append(Page(embeds=[embed]))
-	paginator = Paginator(pages=pages)
-	await paginator.respond(ctx.interaction)
+    items_per_page = 8
+    pages = []
+    for i in range(0, len(items), items_per_page):
+        chunk = items[i:i+items_per_page]
+        embed = discord.Embed(title="Shopping List", color=0x18a558)
+        for item in chunk:
+            embed.add_field(
+                name=f"{item[0]} {item[1]} - ${item[2]:.2f}",
+                value=f"**Status**: {item[3]}",
+                inline=False
+            )
+        pages.append(Page(embeds=[embed]))
+    paginator = Paginator(pages=pages)
+    await paginator.respond(ctx.interaction)
 
 async def backfill_coles_ai(ctx):
-	await ctx.defer()
-	
-	items = cursor.execute("SELECT id, brand, name, current_price FROM coles_specials WHERE tracked_by = ?", (ctx.author.id,)).fetchall()
-	current_date = datetime.now(pytz.timezone("Australia/Sydney")).strftime("%Y-%m-%d %H:%M:%S")
-	
-	count = 0
-	for item in items:
-		item_id, brand, name, price = item[0], item[1], item[2], item[3]
-		
-		if price is None:
-			continue
-			
-		try:
-			ai_data = api_openai.coles_recommendation(item_id, price, current_date)
-			
-			cursor.execute("""
-				UPDATE coles_specials 
-				SET ai_status = ?, ai_recommendation = ?, ai_logic = ? 
-				WHERE id = ?
-			""", (ai_data.current_status, ai_data.recommendation, ai_data.logic, item_id))
-			
-			count += 1
-			print(f"Backfilled {brand} {name}: {ai_data.current_status}")
-			
-		except Exception as e:
-			print(f"Failed to backfill {item_id}: {e}")
+    await ctx.defer()
+    
+    items = cursor.execute("SELECT id, brand, name, current_price FROM coles_specials WHERE tracked_by = ?", (ctx.author.id,)).fetchall()
+    current_date = datetime.now(pytz.timezone('Australia/Sydney')).strftime('%Y-%m-%d %H:%M:%S')
+    
+    count = 0
+    for item in items:
+        item_id, brand, name, price = item[0], item[1], item[2], item[3]
+        
+        if price is None:
+            continue
+            
+        try:
+            ai_data = api_openai.coles_recommendation(item_id, price, current_date)
+            
+            cursor.execute("""
+                UPDATE coles_specials 
+                SET ai_status = ?, ai_recommendation = ?, ai_logic = ? 
+                WHERE id = ?
+            """, (ai_data.current_status, ai_data.recommendation, ai_data.logic, item_id))
+            
+            count += 1
+            print(f"Backfilled {brand} {name}: {ai_data.current_status}")
+            
+        except Exception as e:
+            print(f"Failed to backfill {item_id}: {e}")
 
-	await ctx.followup.send(f"✅ Successfully backfilled AI data for {count} items.")
+    await ctx.followup.send(f"✅ Successfully backfilled AI data for {count} items.")
 
-"""
+'''
 	Coles commands
-"""
+'''
 
 async def coles_search(ctx, string):
 	await ctx.defer()
@@ -219,12 +225,12 @@ async def coles_search(ctx, string):
 
 	if results:
 		url = "https://productimages.coles.com.au/productimages"
-		num_results = results["noOfResults"]
+		num_results = results['noOfResults']
 		if num_results == 0:
 			await ctx.respond("Your search returned no results.")
 			return
-		results = results["results"]
-		results_list = [(product["id"], product["name"], product["brand"], product["imageUris"][0]["uri"]) for product in results if ("adId" not in product or not product["adId"]) and "id" in product]
+		results = results['results']
+		results_list = [(product['id'], product['name'], product['brand'], product['imageUris'][0]['uri']) for product in results if ('adId' not in product or not product['adId']) and 'id' in product]
 		pages = []
 		for item in results_list:
 			embed = discord.Embed(title = f"{item[2]} {item[1]}")
@@ -244,12 +250,12 @@ async def generate_graph(ctx, id):
 		await ctx.respond(f"No results for `{id}`")
 		return
 
-	timestamps = [datetime.strptime(item[2], "%Y-%m-%d %H:%M:%S") for item in data]
+	timestamps = [datetime.strptime(item[2], '%Y-%m-%d %H:%M:%S') for item in data]
 	values = [float(item[1]) for item in data]
 
-	_, axes = plt.subplots(figsize=(12, 6))
+	fig, ax = plt.subplots(figsize=(12, 6))
 
-	bars = axes.bar(range(len(timestamps)), values, width=0.5, color="#E01A22")
+	bars = ax.bar(range(len(timestamps)), values, width=0.5, color='#E01A22')
 
 	low_price = min(values)
 	high_price = max(values)
@@ -257,48 +263,46 @@ async def generate_graph(ctx, id):
 	different_prices = len(set(values))
 
 	title = f"Price trend for {id}\nLow: \${low_price:.2f} | High: \${high_price:.2f} | {price_changes} price changes | {different_prices} different prices"
-	axes.set_title(title, fontsize=12, fontweight="bold")
+	ax.set_title(title, fontsize=12, fontweight='bold')
 	# ax.set_ylabel("Price ($)", fontsize=10)
 
-	axes.set_xticks(range(len(timestamps)))
-	axes.set_xticklabels([t.strftime("%m/%d/%Y") for t in timestamps], rotation=0, ha="center")
+	ax.set_xticks(range(len(timestamps)))
+	ax.set_xticklabels([t.strftime('%m/%d/%Y') for t in timestamps], rotation=0, ha='center')
 
 	for bar in bars:
 		height = bar.get_height()
-		axes.text(bar.get_x() + bar.get_width()/2., height,
-				f"\${height:.2f}",
-				ha="center", va="bottom")
+		ax.text(bar.get_x() + bar.get_width()/2., height,
+				f'${height:.2f}',
+				ha='center', va='bottom')
 
-	y_pos = axes.get_ylim()[0] + (axes.get_ylim()[1] - axes.get_ylim()[0]) * 0.05
+	y_pos = ax.get_ylim()[0] + (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.05
 	for i, (bar, timestamp) in enumerate(zip(bars, timestamps)):
 		if i == 0:
 			continue
 		days = (timestamps[i] - timestamps[i-1]).days
-		axes.text(bar.get_x() + bar.get_width()/2., y_pos,
-				f"{days}\nDays",
-				ha="center", va="bottom", fontsize=8, color="white")
+		ax.text(bar.get_x() + bar.get_width()/2., y_pos,
+				f'{days}\nDays',
+				ha='center', va='bottom', fontsize=8, color='white')
 
-	axes.grid(axis="y", linestyle="--", alpha=0.7)
-
-	plot_filename = "plot.png"
+	ax.grid(axis='y', linestyle='--', alpha=0.7)
 
 	plt.tight_layout()
-	plt.savefig(plot_filename, dpi=300, bbox_inches="tight")
+	plt.savefig('plot.png', dpi=300, bbox_inches='tight')
 
-	await ctx.edit(file=discord.File(plot_filename))
+	await ctx.edit(file=discord.File("plot.png"))
 
-	if os.path.exists(plot_filename):
-		os.remove(plot_filename)
+	if os.path.exists("plot.png"):
+		os.remove("plot.png")
 
-"""
+'''
 	Notifyme commands
-"""
+'''
 
 async def notifyme_edit(ctx, item):
 	if len(item) > 25:
 		await ctx.respond("String must be less than 26 characters")
 		return
-	text_check = re.findall(r"(?i)[^a-z0-9\s\-\']", item)
+	text_check = re.findall(r'(?i)[^a-z0-9\s\-\']', item)
 	if text_check:
 		await ctx.respond("Not a valid string. [a-z0-9\s\-'] only.")
 		return
@@ -315,24 +319,24 @@ async def notifyme_list(ctx):
 	items = [item[0] for item in items]
 	await ctx.respond(items)
 
-"""
+'''
 	Lego commands
-"""
+'''
 
 async def lego_search(ctx, string):
-	product_url = "https://www.lego.com/en-au/product/"
+	product_url = 'https://www.lego.com/en-au/product/'
 	products = api_lego.search_lego_item(string)
 	if products:
 		pages = []
-		num_results = products["total"]
-		results = products["results"]
+		num_results = products['total']
+		results = products['results']
 		for item in results:
-			embed = discord.Embed(title=item["name"], url=product_url + item["slug"])
-			embed.set_image(url=item["baseImgUrl"])
-			embed.add_field(name="Price", value=item["variant"]["price"]["formattedAmount"], inline=True)
-			embed.add_field(name="Availability", value=item["variant"]["attributes"]["availabilityText"])
+			embed = discord.Embed(title=item['name'], url=product_url + item['slug'])
+			embed.set_image(url=item['baseImgUrl'])
+			embed.add_field(name="Price", value=item['variant']['price']['formattedAmount'], inline=True)
+			embed.add_field(name="Availability", value=item['variant']['attributes']['availabilityText'])
 			embed.set_footer(text=f"Returned {num_results} results")
-			pages.append(Page(content=item["name"], embeds=[embed]))
+			pages.append(Page(content=item['name'], embeds=[embed]))
 		paginator = Paginator(pages=pages)
 		await paginator.respond(ctx.interaction)
 	else:
@@ -341,14 +345,14 @@ async def lego_search(ctx, string):
 async def lego_edit(ctx, id):
 	await ctx.defer()
 	result = api_lego.get_lego_item_by_id(id)
-	result = result["data"]["product"]
+	result = result['data']['product']
 	if result:
-		name = result["name"]
-		image_url = result["baseImgUrl"]
-		slug = result["slug"]
-		availability = result["variant"]["attributes"]["availabilityText"]
-		on_sale = result["variant"]["attributes"]["onSale"]
-		price = result["variant"]["price"]["formattedAmount"]
+		name = result['name']
+		image_url = result['baseImgUrl']
+		slug = result['slug']
+		availability = result['variant']['attributes']['availabilityText']
+		on_sale = result['variant']['attributes']['onSale']
+		price = result['variant']['price']['formattedAmount']
 		result_db = cursor.execute("SELECT * FROM lego WHERE id = ?", (id,)).fetchone()
 		if result_db:
 			cursor.execute("DELETE FROM lego WHERE id = ?", (id,)).fetchone()
@@ -368,7 +372,7 @@ async def lego_list(ctx):
 		availability = item[4]
 		on_sale = item[5]
 		price = item[6]
-		compact_info = f"**Name**: {name}\n**Price**: {price}\n**On special**: {"Yes" if on_sale else "No"}\n**Availability**: {availability}"
+		compact_info = f"**Name**: {name}\n**Price**: {price}\n**On special**: {'Yes' if on_sale else 'No'}\n**Availability**: {availability}"
 		embed.add_field(name=f"{item_id} - {name}", value=compact_info, inline=False)
 	await ctx.respond(embed=embed)
 
@@ -384,17 +388,17 @@ async def opal_get_trip_history(ctx, card_id, index):
 		await ctx.respond(nice_try)
 	await ctx.defer()
 	result = api_tfnsw.get_trip_history(card_id)
-	balance = result["ClosingBalance"]
-	journeys = result.get("SmartcardActivityDetail")
+	balance = result['ClosingBalance']
+	journeys = result.get('SmartcardActivityDetail')
 	if journeys:
 		try:
 			journey = journeys[int(index)]
-			tapped_on = f"{journey["ActivityStartDate"]} {journey["ActivityStartTime"]}"
-			tapped_off = f"{journey["ActivityEndDate"]} {journey["ActivityEndTime"]}"
-			full_fare = journey["FullFare"]
-			discount = journey["Discount"]
+			tapped_on = f"{journey['ActivityStartDate']} {journey['ActivityStartTime']}"
+			tapped_off = f"{journey['ActivityEndDate']} {journey['ActivityEndTime']}"
+			full_fare = journey['FullFare']
+			discount = journey['Discount']
 			actual_fare = full_fare + discount
-			off_peak = journey["OffPeakJourney"]
+			off_peak = journey['OffPeakJourney']
 			await ctx.respond(f"Balance now: {balance}, Tapped on: {tapped_on}, Tapped off: {tapped_off}, Full fare: {full_fare}, Discount: {discount}, Actual fare: {actual_fare}, Off peak: {off_peak}")
 		except Exception as e:
 			await ctx.respond(e)

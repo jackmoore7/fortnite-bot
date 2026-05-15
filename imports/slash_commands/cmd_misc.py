@@ -38,16 +38,16 @@ async def train_game(ctx, number, target):
 				formatted = format_and_paginate_all_solutions(response, target)
 				for result_list in formatted:
 					embed = discord.Embed(title="Results for train game with number " + str(number) + " and target " + str(target))
-					embed.add_field(name=response_start, value="\n".join(result_list))
+					embed.add_field(name=response_start, value='\n'.join(result_list))
 					pages.append(Page(embeds=[embed]))
 				paginator = Paginator(pages=pages)
 				await paginator.respond(ctx.interaction)
 	except Exception as e:
 		await ctx.respond(f"ruh roh {e}")
 
-"""
+'''
 	Helper methods
-"""
+'''
 
 def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 	successions = []
@@ -72,12 +72,12 @@ def attempt_get_x(x, nums, current_total, current_operations:list[str]):
 		ops_mod = copy.deepcopy(current_operations)
 
 		# show which operation we're doing
-		ops_add.append("+")
-		ops_sub.append("-")
-		ops_mul.append("*")
-		ops_div.append("/")
-		ops_pow.append("^")
-		ops_mod.append("%")
+		ops_add.append('+')
+		ops_sub.append('-')
+		ops_mul.append('*')
+		ops_div.append('/')
+		ops_pow.append('^')
+		ops_mod.append('%')
 
 		# show what number we're doing the operation on
 		ops_add.append(str(current_num))
@@ -240,23 +240,23 @@ def format_and_paginate_all_solutions(solutions, target):
 		return [formatted_list]
 
 async def clean_tiktok(ctx, url):
-	await ctx.defer()
-	try:
-		response = requests.head(url, allow_redirects=True, timeout=10)
-		clean_url = response.url
+    await ctx.defer()
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=10)
+        clean_url = response.url
 
-		parsed = urlparse(clean_url)
-		query = parse_qs(parsed.query)
+        parsed = urlparse(clean_url)
+        query = parse_qs(parsed.query)
 
-		tracking_params = ["_r", "_t"]
+        tracking_params = ['_r', '_t']
 
-		for param in tracking_params:
-			query.pop(param, None)
+        for param in tracking_params:
+            query.pop(param, None)
 
-		new_query = urlencode(query, doseq=True)
+        new_query = urlencode(query, doseq=True)
 
-		clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+        clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
-		await ctx.respond(clean_url)
-	except Exception as e:
-		await ctx.respond(f"Failed to clean URL: {e}")
+        await ctx.respond(clean_url)
+    except Exception as e:
+        await ctx.respond(f"Failed to clean URL: {e}")
