@@ -1,23 +1,14 @@
 import os
-import requests
-
 from time import sleep
 
-from imports.key_handling import *
+import requests
+
 from imports.core_utils import cursor
+from imports.key_handling import *
 
 content_type = "application/x-www-form-urlencoded"
 select_switch = "SELECT switch FROM keys"
 bearer = "Bearer "
-
-def get_account_key_fortnite_pc_game_client():
-	pass
-
-def get_account_key_launcher_app_client_2():
-	pass
-
-def get_device_auth_2():
-	pass
 
 def get_fortnite_status(): #need to use the fortnite client token
 	url = "https://lightswitch-public-service-prod.ol.epicgames.com/lightswitch/api/service/fortnite/status"

@@ -15,6 +15,7 @@ from imports.api import api_openai
 from imports.core_utils import cursor
 from imports.helpers import added, nice_try, removed
 
+
 def get_date():
 	return datetime.now(pytz.timezone("Australia/Sydney")).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -256,7 +257,7 @@ async def generate_graph(ctx, id):
 	price_changes = len([i for i in range(1, len(values)) if values[i] != values[i-1]])
 	different_prices = len(set(values))
 
-	title = f"Price trend for {id}\nLow: \${low_price:.2f} | High: \${high_price:.2f} | {price_changes} price changes | {different_prices} different prices"
+	title = f"Price trend for {id}\nLow: ${low_price:.2f} | High: ${high_price:.2f} | {price_changes} price changes | {different_prices} different prices"
 	axes.set_title(title, fontsize=12, fontweight="bold")
 	# ax.set_ylabel("Price ($)", fontsize=10)
 
@@ -266,7 +267,7 @@ async def generate_graph(ctx, id):
 	for bar in bars:
 		height = bar.get_height()
 		axes.text(bar.get_x() + bar.get_width()/2., height,
-				f"\${height:.2f}",
+				f"${height:.2f}",
 				ha="center", va="bottom")
 
 	y_pos = axes.get_ylim()[0] + (axes.get_ylim()[1] - axes.get_ylim()[0]) * 0.05
@@ -300,7 +301,7 @@ async def notifyme_edit(ctx, item):
 		return
 	text_check = re.findall(r"(?i)[^a-z0-9\s\-\']", item)
 	if text_check:
-		await ctx.respond("Not a valid string. [a-z0-9\s\-'] only.")
+		await ctx.respond(r"Not a valid string. [a-z0-9\s\-'] only.")
 		return
 	user_id = ctx.user.id
 	if len(cursor.execute("SELECT * FROM shop_ping WHERE item = ? AND id = ?", (item, user_id)).fetchall()) > 0:

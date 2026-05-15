@@ -1,11 +1,12 @@
-import itertools
 import copy
-from imports.core_utils import discord, discord_client
-from discord.ext.pages import Paginator, Page
-import requests
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+import itertools
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-import imports.api.api_openai as api_openai
+import requests
+from discord.ext.pages import Page, Paginator
+
+from imports.core_utils import discord, discord_client
+
 
 async def ping(ctx):
 	await ctx.respond("Ponged your ping in " + str(round(discord_client.latency * 1000)) + "ms 😳")
@@ -212,7 +213,7 @@ def solve_and_format_solutions(solutions:str, target):
 		sol = breakdown_expression(place_brackets(sol), target)
 		if sol is None:
 			continue
-		sol = sol.replace("*", "\*")
+		sol = sol.replace("*", r"\*")
 		sol = "**" + str(sol_num) + ")** " + sol
 		formatted.append(sol)
 	return formatted
