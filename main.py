@@ -7,6 +7,7 @@ import sys
 
 import discord
 import heartrate
+import requests
 from dotenv import load_dotenv
 
 import imports.commands as cmd
@@ -236,6 +237,19 @@ async def on_message_edit(before, after):
 """
 	Discord handling
 """
+
+def post_error(message: str):
+    try:
+        requests.post(os.getenv("ERROR_WEBHOOK"), json={"content": f"```{message}```"})
+    except Exception:
+        pass
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    import traceback
+    tb = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    post_error(tb)
+
+sys.excepthook = handle_exception
 
 def send_stdout_to_discord(message):
 	message = message.strip()
