@@ -13,7 +13,7 @@ async def get_id(ctx, username):
 
 async def get_username(ctx, id):
 	e = api_epic.get_user_by_id(id)
-	await ctx.respond(e['displayName'])
+	await ctx.respond(e["displayName"])
 
 async def get_last_online(ctx, username):
 	await ctx.defer()
@@ -27,17 +27,17 @@ async def get_last_online(ctx, username):
 
 async def stats(ctx, username):
 	r = api_third_party.fortnite_br_stats(username)
-	if r.json()['status'] == 403:
+	if r.json()["status"] == 403:
 		await ctx.respond("`" + username + "` set their stats to private")
 		return
-	if r.json()['status'] != 200:
+	if r.json()["status"] != 200:
 		await ctx.respond("`" + username + "` doesn't exist or hasn't played any games yet")
 		return
-	data = r.json()['data']
-	name = data['account']['name']
-	level = data['battlePass']['level']
+	data = r.json()["data"]
+	name = data["account"]["name"]
+	level = data["battlePass"]["level"]
 	embed = discord.Embed(title="All time statistics for " + name)
-	stats = data['stats']['all']['overall']
+	stats = data["stats"]["all"]["overall"]
 	fields = [
 		("Wins", "wins", lambda x: x),
 		("Top 3", "top3", lambda x: x),

@@ -12,3 +12,5 @@
 *.jpg
 *.jpeg
 test.py
+.ruff_cache/
+__pycache__/
