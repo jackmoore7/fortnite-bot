@@ -5,7 +5,7 @@ from imports.helpers import nice_try
 import imports.api.api_epic as api_epic
 
 def is_owner(ctx):
-	return ctx.user.id == int(os.getenv('ME'))
+	return ctx.user.id == int(os.getenv("ME"))
 
 async def edit_message(ctx, id, content):
 	try:

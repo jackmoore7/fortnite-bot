@@ -1,47 +1,45 @@
-import os
-import sys
 import asyncio
 import faulthandler
-import signal
 import logging
-import heartrate
+import os
+import signal
+import sys
 
+import discord
+import heartrate
 from dotenv import load_dotenv
-from systemd.journal import JournalHandler
+
+import imports.commands as cmd
+import imports.events as events
+import imports.slash_commands.cmd_ai as ai_cmd
+import imports.slash_commands.cmd_fortnite as fortnite_cmd
+import imports.slash_commands.cmd_misc as misc_cmd
+import imports.slash_commands.cmd_notifyme as notifyme_cmd
+import imports.slash_commands.cmd_owner as owner_cmd
+import imports.tasks1 as bg_tasks
+
+# from systemd.journal import JournalHandler
 from imports.core_utils import discord_client
 
-import imports.tasks1 as bg_tasks
-import imports.commands as cmd
-import imports.slash_commands.cmd_owner as owner_cmd
-import imports.slash_commands.cmd_fortnite as fortnite_cmd
-import imports.slash_commands.cmd_notifyme as notifyme_cmd
-import imports.slash_commands.cmd_misc as misc_cmd
-import imports.slash_commands.cmd_ai as ai_cmd
-import imports.events as events
-
-heartrate.trace(browser=True, host='0.0.0.0')
-
-log = logging.getLogger('demo')
-log.addHandler(JournalHandler())
-log.setLevel(logging.INFO)
-log.info('sent to journal')
+heartrate.trace(browser=True, host="0.0.0.0")
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-faulthandler.enable(file=open('error.log', 'w'))
+faulthandler.enable(file=open("error.log", "w"))
 faulthandler.register(signal.SIGUSR1.value)
 
 load_dotenv()
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.getenv('GOOGLE_KEY')
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.getenv("GOOGLE_KEY")
 
 @discord_client.event
 async def on_ready():
 	await bg_tasks.tasks_on_ready()
 
-'''
+"""
 	Grouped commands - for coles, shop notifications, and lego
-'''
+"""
 
 coles_group = discord_client.create_group("coles", "Edit your tracked items list")
 notifyme_group = discord_client.create_group("notifyme", "Get notified when an item you want is in the shop")
@@ -63,6 +61,14 @@ async def search(ctx, string):
 @coles_group.command(description="View the price over time of a tracked item")
 async def graph(ctx, id):
 	await cmd.generate_graph(ctx, id)
+
+@coles_group.command(description="Generate a shopping list of your tracked items that are currently on sale")
+async def shopping_list(ctx, mode: discord.Option(str, choices=["default", "floor_only"], description="Filter mode: default (mid-range and floor) or floor_only") = "default"):
+	await cmd.shopping_list(ctx, mode)
+
+@coles_group.command(description="Backfill AI data for your tracked items")
+async def backfill(ctx):
+	await cmd.backfill_coles_ai(ctx)
 
 @notifyme_group.command(description="Add or remove a cosmetic")
 async def edit(ctx, item):
@@ -95,9 +101,9 @@ async def history(ctx, card_id, index):
 @opal_group.command(description="Top up")
 async def top_up(ctx, card_id, cents):
 	await cmd.opal_top_up(ctx, card_id, cents)
-'''
+"""
 	Slash commands that are only used by the owner
-'''
+"""
 
 @discord_client.slash_command(description="[Owner] Edit a message")
 async def edit_message(ctx, id, content):
@@ -112,7 +118,7 @@ async def add_friend(ctx, user_id):
 	await owner_cmd.add_friend(ctx, user_id)
 
 @discord_client.slash_command(description="[Owner] List all friends")
-async def list_friends(ctx, include_pending=''):
+async def list_friends(ctx, include_pending=""):
 	await owner_cmd.list_friends(ctx, include_pending)
 
 @discord_client.slash_command(description="[Owner] Clear messages")
@@ -147,9 +153,9 @@ async def new_conversation(ctx):
 async def list_conversation(ctx):
 	await ai_cmd.list_conversation(ctx)
 
-'''
+"""
 	Slash commands that can be used by anyone
-'''
+"""
 
 @discord_client.slash_command(description="Get a user's Epic Games ID")
 async def fortnite_get_id(ctx, username):
@@ -195,9 +201,9 @@ async def clean_tiktok(ctx, url):
 async def train_game(ctx, number, target=10):
 	await misc_cmd.train_game(ctx, number, target)
 
-'''
+"""
 	Discord events
-'''
+"""
 
 @discord_client.event
 async def on_message(message):
@@ -217,7 +223,7 @@ async def on_member_remove(member):
 
 @discord_client.event
 async def on_member_update(before, after):
-    await events.member_update(before, after)
+	await events.member_update(before, after)
 
 @discord_client.event
 async def on_message_edit(before, after):
@@ -227,33 +233,33 @@ async def on_message_edit(before, after):
 # async def on_message(message):
 # 	events.message_old(message)
 
-'''
+"""
 	Discord handling
-'''
+"""
 
 def send_stdout_to_discord(message):
 	message = message.strip()
 	if message:
-		channel = discord_client.get_channel(int(os.getenv('STDOUT')))
+		channel = discord_client.get_channel(int(os.getenv("STDOUT")))
 		if channel:
 			asyncio.ensure_future(channel.send(message))
 
 def send_stdout_to_discord(message):
-    message = message.strip()
+	message = message.strip()
 
-    if message:
-        channel = discord_client.get_channel(int(os.getenv('STDOUT')))
-        
-        if channel:
-            if len(message) > 2000:
-                chunks = [message[i:i+2000] for i in range(0, len(message), 2000)]
-                
-                for chunk in chunks:
-                    asyncio.ensure_future(channel.send(chunk))
-            else:
-                asyncio.ensure_future(channel.send(message))
+	if message:
+		channel = discord_client.get_channel(int(os.getenv("STDOUT")))
+		
+		if channel:
+			if len(message) > 2000:
+				chunks = [message[i:i+2000] for i in range(0, len(message), 2000)]
+				
+				for chunk in chunks:
+					asyncio.ensure_future(channel.send(chunk))
+			else:
+				asyncio.ensure_future(channel.send(message))
 
 sys.stdout.write = send_stdout_to_discord
 sys.stderr.write = send_stdout_to_discord
 
-discord_client.run(os.getenv('TOKEN'))
+discord_client.run(os.getenv("TOKEN"))
